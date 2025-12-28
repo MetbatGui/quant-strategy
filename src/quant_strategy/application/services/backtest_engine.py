@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
-# 🔥 전략 교체: 스마트 머니(SmartMoney) -> 세력 평단가(SmartMoneyCost)
-from quant_strategy.domain.strategies.smart_money_cost_strategy import SmartMoneyCostStrategy
+# 🔥 전략 교체: 세력 평단가(SmartMoneyCost) -> 스마트 머니 모멘텀(SmartMoneyMomentum)
+from quant_strategy.domain.strategies.smart_money_momentum_strategy import SmartMoneyMomentumStrategy
 from quant_strategy.infrastructure.data_loader import MarketDataLoader
 
 class BacktestService:
@@ -15,7 +15,7 @@ class BacktestService:
         self.data_loader = MarketDataLoader()
         
         # 🔥 전략 인스턴스화
-        self.strategy = SmartMoneyCostStrategy(window=60)
+        self.strategy = SmartMoneyMomentumStrategy(window=60)
 
     def run(self, ticker: str, start_date: str, end_date: str):
         # 1. 데이터 준비
