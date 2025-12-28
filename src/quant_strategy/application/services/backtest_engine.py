@@ -38,7 +38,12 @@ class BacktestService:
         
         units = 0            
         last_entry_price = 0 
-        stop_loss_price = 0  
+        stop_loss_price = 0
+        last_exit_idx = -1 # 마지막 매도 시점 (피닉스 룰용)
+        
+        # 피닉스 룰을 위한 5일 이평선 계산 (전략에서 안 줄 수도 있으니)
+        if 'MA5' not in df.columns:
+            df['MA5'] = df['Close'].rolling(window=5).mean()
         
         equity_curve = []
 
@@ -60,12 +65,25 @@ class BacktestService:
             current_equity = cash + (shares * current_price)
             
             # ------------------------------------
+            # [Step 0] 피닉스 룰 (즉시 재진입)
+            # ------------------------------------
+            # 최근 3일 이내에 손절/매도했고 + 현재가가 5일선 위에 있으면 즉시 재매수
+            # 불장의 V자 반등 놓치지 않기 위함
+            is_phoenix_entry = False
+            if shares == 0 and last_exit_idx != -1:
+                # 인덱스가 날짜라고 가정
+                days_since_exit = (df.index[i] - df.index[last_exit_idx]).days
+                ma5 = curr_row.get('MA5', 0)
+                
+                if days_since_exit <= 3 and current_price > ma5:
+                    is_phoenix_entry = True
+
+            # ------------------------------------
             # [Step 1] 강제 손절 체크 (Stop Loss)
-            # 골든크로스라 해도 급락은 피해야 하므로 2N 손절 유지
             # ------------------------------------
             executed_stop_loss = False
-            """
-            if shares > 0:
+            # 피닉스 진입이 아닐 때만 손절 체크 (재진입 당일 손절 방지 등)
+            if shares > 0 and not is_phoenix_entry:
                 if curr_row['Low'] <= stop_loss_price:
                     exit_price = stop_loss_price
                     if curr_row['Open'] < stop_loss_price:
@@ -76,7 +94,9 @@ class BacktestService:
                     units = 0
                     stop_loss_price = 0
                     executed_stop_loss = True
-                    df.at[curr_row.name, 'Action'] = 'SELL'"""
+                    last_exit_idx = i # 매도 시점 기록
+                    df.at[curr_row.name, 'Action'] = 'SELL'
+
             # ------------------------------------
             # [Step 2] 전략 신호 확인
             # ------------------------------------
@@ -84,9 +104,11 @@ class BacktestService:
                 signal = self.strategy.check_signals(curr_row, prev_row, has_position=(shares > 0))
 
                 # === [A. 매수 진입] ===
-                # 골든크로스 발생 or 정배열 상태
-                if signal == 'BUY' and shares == 0:
+                # 피닉스 룰 발동 OR 일반 매수 신호
+                if (signal == 'BUY' or is_phoenix_entry) and shares == 0:
                     risk_amount = current_equity * self.risk_pct
+                    # [핵심 변경] 레버리지 투입: 손절은 4N이지만, 유닛 사이징은 2N 기준으로 계산 (공격적)
+                    # 즉, 손절 시 -10% 손실 감수 (기존 -5%)
                     risk_per_share = 2 * atr 
                     
                     unit_size = int(risk_amount / risk_per_share)
@@ -99,16 +121,16 @@ class BacktestService:
                         
                         units = 1
                         last_entry_price = current_price
-                        stop_loss_price = current_price - (2 * atr)
+                        stop_loss_price = current_price - (4 * atr) # [변경] 넉넉한 손절 (4N)
                         
                         df.at[curr_row.name, 'Action'] = 'BUY'
 
                 # === [B. 불타기 (Pyramiding)] ===
-                # 골든크로스 전략에서도 추세 강화 시 추가 매수 유효
-                elif shares > 0 and units < 4:
-                    if current_price > last_entry_price + (0.5 * atr): 
+                # [변경] Max Unit 6, 0.3N 상승 시 추가 매수 (공격적)
+                elif shares > 0 and units < 6:
+                    if current_price > last_entry_price + (0.3 * atr): 
                         risk_amount = current_equity * self.risk_pct
-                        risk_per_share = 2 * atr
+                        risk_per_share = 2 * atr # 공격적 사이징 유지
                         unit_size = int(risk_amount / risk_per_share)
                         
                         max_buyable = int(cash / current_price)
@@ -121,19 +143,20 @@ class BacktestService:
                             last_entry_price = current_price
                             units += 1
                             
-                            new_stop_loss = current_price - (2 * atr)
+                            # 트레일링 스탑도 4N 여유
+                            new_stop_loss = current_price - (4 * atr)
                             if new_stop_loss > stop_loss_price:
                                 stop_loss_price = new_stop_loss
                             
                             df.at[curr_row.name, 'Action'] = 'BUY'
 
                 # === [C. 매도 청산] ===
-                # 데드크로스 발생 시 전량 매도
                 elif signal == 'SELL' and shares > 0:
                     cash += shares * current_price
                     shares = 0
                     units = 0
                     stop_loss_price = 0
+                    last_exit_idx = i # 매도 시점 기록
                     df.at[curr_row.name, 'Action'] = 'SELL'
 
             total_asset = cash + (shares * current_price)
