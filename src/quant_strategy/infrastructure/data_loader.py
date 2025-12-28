@@ -39,49 +39,89 @@ class MarketDataLoader:
         
         return df
 
-    def _merge_investor_data(self, df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    def _merge_investor_data(self, ohlcv_df: pd.DataFrame, ticker: str) -> pd.DataFrame:
         from pykrx import stock
         
-        # df의 날짜 범위 확인 (이미 인덱스임)
-        if df.empty: return df
+        if ohlcv_df.empty: return ohlcv_df
         
-        # Timezone 제거 (Merge 호환성)
-        if df.index.tz is not None:
-            df.index = df.index.tz_localize(None)
+        # 날짜 범위 설정
+        start_date = ohlcv_df.index[0].strftime("%Y%m%d")
+        end_date = ohlcv_df.index[-1].strftime("%Y%m%d")
+        
+        # pykrx 티커 변환 (yfinance 티커에서 숫자만 추출)
+        code = ''.join(filter(str.isdigit, ticker))
+        
+        try:
+            # 일별 거래실적 (기관/외국인)
+            # 주의: pykrx의 날짜는 'YYYYMMDD' 문자열이 아니라 datetime 인덱스로 나옴
+            investor_df = stock.get_market_trading_value_by_date(start_date, end_date, code)
+            
+            # 컬럼 매핑 (pykrx 버전에 따라 컬럼명이 다를 수 있음, 안전하게 확인)
+            # 보통: '외국인합계', '기관합계', '기타법인', '개인', '전체'
+            # 영문 환경일 경우: 'Foreigner', 'Institution' 등
+            
+            # 한국어 컬럼명을 영문으로 변경
+            rename_map = {
+                '외국인합계': 'Foreigner',
+                '기관합계': 'Institution',
+                '외국인': 'Foreigner', # 버전에 따라 다를 수 있음
+                '기관': 'Institution'
+            }
+            investor_df = investor_df.rename(columns=rename_map)
+            
+            # 필요한 컬럼만 추출 (없으면 생성)
+            if 'Foreigner' not in investor_df.columns: investor_df['Foreigner'] = 0
+            if 'Institution' not in investor_df.columns: investor_df['Institution'] = 0
+            
+            investor_df = investor_df[['Foreigner', 'Institution']]
+            
+            # 인덱스 타임존 처리 (yfinance는 tz-aware일 수 있음)
+            # ohlcv_df.index가 tz-aware인지 확인
+            if ohlcv_df.index.tz is not None:
+                # investor_df 인덱스를 tz-aware로 변환 (UTC+9 등 적절히, 여기서는 단순하게 ohlcv와 맞춤)
+                if investor_df.index.tz is None:
+                    investor_df.index = investor_df.index.tz_localize(ohlcv_df.index.tz)
+            else:
+                if investor_df.index.tz is not None:
+                    investor_df.index = investor_df.index.tz_localize(None)
 
-        start_dt = df.index[0].strftime("%Y%m%d")
-        end_dt = df.index[-1].strftime("%Y%m%d")
-        
-        # 종목코드 정리 (KS 제거)
-        clean_ticker = ticker.split('.')[0]
-        
-        # pykrx로 수급 데이터 조회 (기관합계, 외국인)
-        inv_df = stock.get_market_trading_value_by_date(start_dt, end_dt, clean_ticker)
-        
-        # 필요한 컬럼만 추출 및 리네임
-        # pykrx 컬럼: 기관합계, 외국인합계
-        inv_df.rename(columns={'외국인합계': 'Foreigner', '외국인': 'Foreigner', '기관합계': 'Institution'}, inplace=True)
-        target_cols = ['Foreigner', 'Institution']
-        existing_cols = [c for c in target_cols if c in inv_df.columns]
-        
-        if existing_cols:
-            inv_df = inv_df[existing_cols].copy()
-            inv_df.rename(columns={'외국인': 'Foreigner', '기관합계': 'Institution'}, inplace=True)
-            
             # 병합 (Left Join)
-            df = df.join(inv_df, how='left')
+            merged = ohlcv_df.join(investor_df, how='left').fillna(0)
+            return merged
+
+        except Exception as e:
+            print(f"⚠️ Investor data fetch failed: {e}")
+            # 실패 시 0으로 채워서 반환
+            ohlcv_df['Foreigner'] = 0
+            ohlcv_df['Institution'] = 0
+            return ohlcv_df
+    
+    def fetch_macro_data(self, start_date=None, end_date=None) -> pd.DataFrame:
+        """
+        나스닥(^NDX) 및 환율(KRW=X) 데이터를 가져옴
+        """
+        try:
+            tickers = ['^NDX', 'KRW=X'] # 나스닥100, 원달러환율
+            macro_df = yf.download(tickers, start=start_date, end=end_date, progress=False)
             
-        # 컬럼이 없으면 0으로 채움 (Partial Missing 방지)
-        if 'Foreigner' not in df.columns:
-            df['Foreigner'] = 0
-        if 'Institution' not in df.columns:
-            df['Institution'] = 0
+            # MultiIndex 컬럼 처리
+            if isinstance(macro_df.columns, pd.MultiIndex):
+                # 'Close' 레벨만 가져오기
+                close_df = macro_df['Close'].copy()
+            else:
+                close_df = macro_df.copy()
             
-        # NaN 처리
-        df['Foreigner'] = df['Foreigner'].fillna(0)
-        df['Institution'] = df['Institution'].fillna(0)
-             
-        return df
+            # 컬럼명 정리
+            # 다운로드된 컬럼이 symbol 이름으로 되어있음
+            # 예: KRW=X, ^NDX
+            
+            # 날짜 정렬 및 결측치 처리 (ffill)
+            close_df = close_df.ffill()
+            
+            return close_df
+        except Exception as e:
+            print(f"⚠️ Macro data fetch failed: {e}")
+            return pd.DataFrame()
 
     def _add_atr(self, df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
         """

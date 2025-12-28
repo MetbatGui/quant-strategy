@@ -51,42 +51,41 @@ class HybridStrategy:
         ma60 = curr_row['MA60']
         
         # === [상태 정의] ===
-        # 1. 불장(Bull Regime): 주가가 60일선 위에 있음 (대세 상승)
-        is_bull_regime = current_price > ma60
-        
-        # 2. 수급 긍정(Smart Buy): 최근 5일간 메이저가 매집 중
+        # 1. 수급 긍정(Smart Buy)
         is_smart_buying = curr_row['Smart_Trend'] > 0
+
+        # 2. 불장(Bull Regime) 정의 강화
+        # 기본: 60일선 위에 있으면 불장
+        # 예외: 60일선 깨졌어도 '스마트 머니'가 매집 중이면 불장으로 간주 (개미털기 방지)
+        is_price_bull = current_price > ma60
+        is_bull_regime = is_price_bull or is_smart_buying
         
-        # 3. 골든크로스: 5일선이 20일선 위에 있음 (단기 상승)
+        # 3. 골든크로스
         is_golden = ma5 > ma20
 
         # === [매수 로직 (Entry)] ===
         if not has_position:
             # 조건: (대세 상승장 OR 수급 매집) AND (단기 정배열)
-            # 수급이 좋으면 60일선 아래라도 선취매 가능 (Smart Money 효과)
-            if (is_bull_regime or is_smart_buying) and is_golden:
+            if (is_bull_regime) and is_golden:
                 return 'BUY'
 
         # === [매도 로직 (Exit) - 핵심!] ===
         if has_position:
             # 🔥 [하이브리드 모드]
             
-            # CASE A: 대세 상승장(60일선 위) + 수급 좋음
-            # -> "존버 모드": 자잘한 데드크로스 무시. 60일선 깨질 때까지 안 팖.
-            if is_bull_regime and is_smart_buying:
-                if current_price < ma60: # 생명선 붕괴 시에만 매도
+            # CASE A: 불장 (MA60 위 or 세력 매집 중)
+            # -> "존버 모드": 60일선 깨지고 + 세력도 이탈해야 매도.
+            if is_bull_regime:
+                # 60일선도 깨지고 AND 세력도 안 사면 -> 진짜 하락장 전환 -> 매도
+                if (not is_price_bull) and (not is_smart_buying):
                     return 'SELL'
                 else:
-                    return 'HOLD' # 5일선 깨져도 버팀 (휩소 방지)
+                    return 'HOLD' 
             
-            # CASE B: 힘이 약한 장 (60일선 아래 or 수급 이탈)
+            # CASE B: 약세장 (MA60 아래 and 세력 이탈)
             # -> "칼손절 모드": 20일선만 깨져도 바로 도망감.
             else:
-                if current_price < ma20: # 단기 추세 이탈 시 매도
+                if current_price < ma20: 
                     return 'SELL'
                 
-                # 혹은 스마트 머니가 대량 매도 시 탈출
-                if curr_row['Smart_Trend'] < 0 and current_price < ma5:
-                    return 'SELL'
-
         return 'HOLD'
