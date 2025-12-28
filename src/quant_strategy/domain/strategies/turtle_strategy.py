@@ -42,7 +42,7 @@ class TurtleStrategy:
         
         return df
 
-    def check_signals(self, curr_row, prev_row, has_position: bool) -> str:
+    def check_signals(self, curr_row, prev_row, has_position: bool, entry_price: float = 0) -> str:
         current_close = curr_row['Close']
         donchian_high = curr_row['Donchian_High']
         donchian_low = curr_row['Donchian_Low']

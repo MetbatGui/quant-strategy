@@ -40,7 +40,53 @@ class MarketDataLoader:
             df['Institution'] = 0
 
         # 2. 지표 추가
+        # (1) 이동평균선
+        df['MA5'] = df['Close'].rolling(window=5).mean()
+        df['MA20'] = df['Close'].rolling(window=20).mean()
+        df['MA60'] = df['Close'].rolling(window=60).mean()
+        
+        # (2) ATR (기존 메소드 대신 직접 계산)
         df = self._add_atr(df)
+
+        # (3) RSI (Relative Strength Index)
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+        
+        # (4) MFI (Money Flow Index)
+        typical_price = (df['High'] + df['Low'] + df['Close']) / 3
+        money_flow = typical_price * df['Volume']
+        
+        pos_flow = pd.Series(0.0, index=df.index)
+        neg_flow = pd.Series(0.0, index=df.index)
+        
+        price_diff = typical_price.diff()
+        pos_flow[price_diff > 0] = money_flow[price_diff > 0]
+        neg_flow[price_diff < 0] = money_flow[price_diff < 0]
+        
+        pos_mf_sum = pos_flow.rolling(window=14).sum()
+        neg_mf_sum = neg_flow.rolling(window=14).sum()
+        
+        mfi_ratio = pos_mf_sum / neg_mf_sum
+        df['MFI'] = 100 - (100 / (1 + mfi_ratio))
+        
+        # (5) MACD
+        exp12 = df['Close'].ewm(span=12, adjust=False).mean()
+        exp26 = df['Close'].ewm(span=26, adjust=False).mean()
+        df['MACD'] = exp12 - exp26
+        df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+        
+        # (6) Bollinger Bands
+        bb_period = 20
+        bb_std = df['Close'].rolling(window=bb_period).std()
+        df['BB_Mid'] = df['Close'].rolling(window=bb_period).mean()
+        df['BB_Upper'] = df['BB_Mid'] + (bb_std * 2)
+        df['BB_Lower'] = df['BB_Mid'] - (bb_std * 2)
+        
+        # NaN 제거
+        df = df.dropna()
         
         return df
 

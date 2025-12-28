@@ -74,7 +74,7 @@ class MacroHybridStrategy:
 
         return df
 
-    def check_signals(self, curr_row, prev_row, has_position: bool) -> str:
+    def check_signals(self, curr_row, prev_row, has_position: bool, entry_price: float = 0) -> str:
         current_price = curr_row['Close']
         ma5 = curr_row.get('MA5', 0)
         ma20 = curr_row.get('MA20', 0)

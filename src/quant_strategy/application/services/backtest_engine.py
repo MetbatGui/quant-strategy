@@ -32,6 +32,7 @@ class BacktestService:
             return pd.DataFrame()
         
         # 지표 추가 (MA, ATR, Macro 등)
+        # 지표 추가 (MA, ATR, Macro 등)
         df = self.strategy.add_indicators(raw_df, macro_df=macro_df)
         df['Action'] = None 
         
@@ -45,6 +46,7 @@ class BacktestService:
         
         units = 0            
         last_entry_price = 0 
+        self.avg_price = 0 # 평단가 (수익률 계산용)
         # stop_loss_price는 이제 Strategy의 Chandelier Exit이 담당하므로 보조적 역할(안전망)만 수행
         stop_loss_price = 0
         last_exit_idx = -1 # 마지막 매도 시점 (피닉스 룰용)
@@ -91,15 +93,19 @@ class BacktestService:
             # ------------------------------------
             # [Step 1] 전략 신호 확인 (매도 포함)
             # ------------------------------------
-            # 전략이 샹들리에 청산(SELL) 신호를 주면 여기서 처리됨
-            signal = self.strategy.check_signals(curr_row, prev_row, has_position=(shares > 0))
-
+            # 5. 매매 신호 확인
+            # entry_price(평단가)를 전달하여 수익률 기반 로직 가능하게 함
+            has_position = (shares > 0)
+            signal = self.strategy.check_signals(curr_row, prev_row, has_position, entry_price=self.avg_price)
+            
+            # 6. 매수/매도 실행
             # === [A. 매도 청산] ===
             # 나스닥 폭락 or 개별 종목 악재
             if shares > 0 and signal == 'SELL':
                 cash += shares * current_price
                 shares = 0
                 units = 0
+                self.avg_price = 0 # 매도 시 평균 매수 단가 초기화
                 last_exit_idx = i
                 df.at[curr_row.name, 'Action'] = 'SELL'
             
@@ -117,6 +123,7 @@ class BacktestService:
                 if buy_amount > 0:
                     shares = buy_amount
                     cash -= shares * current_price
+                    self.avg_price = current_price # 첫 진입 평단가
                     
                     units = 1
                     last_entry_price = current_price
@@ -138,8 +145,11 @@ class BacktestService:
                     buy_amount = min(unit_size, max_buyable)
                     
                     if buy_amount > 0:
+                        # 평단가 갱신 (가중 평균)
+                        total_cost = (shares * self.avg_price) + (buy_amount * current_price)
                         shares += buy_amount
                         cash -= buy_amount * current_price
+                        self.avg_price = total_cost / shares
                         
                         last_entry_price = current_price
                         units += 1

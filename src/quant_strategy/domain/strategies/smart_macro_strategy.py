@@ -70,7 +70,7 @@ class SmartMacroStrategy(MacroHybridStrategy):
         
         return df
 
-    def check_signals(self, curr_row, prev_row, has_position: bool) -> str:
+    def check_signals(self, curr_row, prev_row, has_position: bool, entry_price: float = 0) -> str:
         # 1. 부모 클래스의 매수/매도 로직 먼저 확인?
         # -> 부모 로직이 'SELL'일 때 Shield를 쳐야 함.
         # -> 다만 부모 check_signals는 내부 변수를 안 뱉으므로, 여기서 다시 구현하는 게 깔끔함.
