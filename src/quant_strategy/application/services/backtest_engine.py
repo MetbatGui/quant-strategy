@@ -1,21 +1,19 @@
 import pandas as pd
 import numpy as np
-# 🔥 전략 교체: 하이브리드(Hybrid) -> 매크로 하이브리드(MacroHybrid)
-from quant_strategy.domain.strategies.macro_hybrid_strategy import MacroHybridStrategy
 from quant_strategy.infrastructure.data_loader import MarketDataLoader
 
 class BacktestService:
-    def __init__(self, initial_capital=100_000_000, risk_pct=0.05):
+    def __init__(self, strategy, initial_capital=100_000_000, risk_pct=0.05):
         """
+        :param strategy: 사용할 전략 인스턴스 (Duck Typing)
         :param initial_capital: 초기 자본금
         :param risk_pct: 리스크 허용 비율 (기본 5%)
         """
         self.initial_capital = initial_capital
         self.risk_pct = risk_pct 
         self.data_loader = MarketDataLoader()
-        
-        # 🔥 전략 인스턴스화
-        self.strategy = MacroHybridStrategy(window=60)
+        self.strategy = strategy
+
 
     def run(self, ticker: str, start_date: str, end_date: str):
         # 1. 데이터 준비

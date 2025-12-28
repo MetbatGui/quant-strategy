@@ -15,7 +15,7 @@ class TurtleStrategy:
         self.filter_period = filter_period
         self.atr_period = atr_period # ATR 계산 기간 (보통 20일)
 
-    def add_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+    def add_indicators(self, df: pd.DataFrame, macro_df: pd.DataFrame = None) -> pd.DataFrame:
         df = df.copy()
         
         # 1. 돈치안 채널 (Donchian Channel) - Shift 1 필수

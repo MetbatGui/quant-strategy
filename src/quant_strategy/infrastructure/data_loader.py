@@ -11,7 +11,12 @@ class MarketDataLoader:
         데이터를 가져오고 보조지표(ATR 등)를 계산하여 반환
         """
         # 1. 야후 파이낸스 데이터 다운로드
-        ticker_symbol = f"{ticker}.KS" if not ticker.endswith(".KS") else ticker
+        # 티커 처리: 이미 .KS나 .KQ가 붙어있으면 그대로 사용, 없으면 .KS 붙임
+        if not (ticker.endswith('.KS') or ticker.endswith('.KQ')):
+            ticker_symbol = f"{ticker}.KS"
+        else:
+            ticker_symbol = ticker
+            
         df = yf.download(ticker_symbol, start=self.start_date, progress=False)
         
         if df.empty:
