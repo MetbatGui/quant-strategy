@@ -1,7 +1,7 @@
 [project]
 name = "quant-strategy"
 version = "0.1.0"
-description = "Add your description here"
+description = "Project Darwin: Quantitative Trading Strategy"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -9,4 +9,17 @@ dependencies = [
     "pandas>=2.3.3",
     "pykrx>=1.0.51",
     "setuptools>=80.9.0",
+    "yfinance>=1.0",
 ]
+
+# [추가됨] 빌드 시스템 정의 (setuptools 사용 시 필수)
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+# [추가됨] src 레이아웃 설정
+# src 폴더 밑에 있는 패키지들을 자동으로 찾아서 설치합니다.
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["*"]
+namespaces = false
