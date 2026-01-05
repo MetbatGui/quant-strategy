@@ -36,9 +36,14 @@ class EtfQualityStrategy:
     QUALITY_THRESHOLD = 60  # 최소 품질 점수
     ENTRY_K = 0.03  # 진입 k 값 (3%)
     
-    def __init__(self):
+    def __init__(self, exit_strategy: str = 'always_open'):
+        """
+        Args:
+            exit_strategy: 'always_open' (무조건 시가, Default) or 'dynamic' (갭에 따라 시가/종가)
+        """
         self.models = {}  # ticker -> model
         self.features = {}  # ticker -> feature_names
+        self.exit_strategy = exit_strategy
     
     def calculate_quality_score(
         self,
@@ -274,12 +279,17 @@ class EtfQualityStrategy:
         # 갭 계산
         gap = (exit_open / entry_close) - 1
         
-        if gap > 0:
-            # 갭 상승 -> 종가에 청산
-            return True, 'CLOSE'
-        else:
-            # 갭 하락 -> 시가에 청산
+        # 청산 전략에 따른 분기
+        if self.exit_strategy == 'always_open':
             return True, 'OPEN'
+        else:
+            # dynamic (기존 로직)
+            if gap > 0:
+                # 갭 상승 -> 종가에 청산
+                return True, 'CLOSE'
+            else:
+                # 갭 하락 -> 시가에 청산
+                return True, 'OPEN'
     
     def train_models(self, etf_data: Dict[str, pd.DataFrame]):
         """
