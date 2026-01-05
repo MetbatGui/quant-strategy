@@ -144,14 +144,14 @@ class SignalService:
                 prev_range = latest_price_data['High'] - latest_price_data['Low']
             
             # 예상 진입가
-            reference_entry = latest_price_data['Close'] + (prev_range * self.strategy.ENTRY_K)
+            reference_entry = latest_price_data['Close'] + (prev_range * self.strategy.k)
             reference_entry = round(reference_entry / 5) * 5
             
             print(f"[{rank}순위] {name} ({ticker})")
             print(f"   품질 점수: {score}점")
             print(f"   기준 종가: {latest_price_data['Close']:,.0f}원")
             print(f"   전일 변동폭: {prev_range:,.0f}원")
-            print(f"   예상 진입가: {reference_entry:,.0f}원 (시가 + {prev_range * 0.03:,.0f}원)")
+            print(f"   예상 진입가: {reference_entry:,.0f}원 (시가 + {prev_range * self.strategy.k:,.0f}원)")
             print("-" * 40)
             
             signals.append({

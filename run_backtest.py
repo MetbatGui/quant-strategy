@@ -1,6 +1,7 @@
-
 import sys
 import os
+import argparse
+from datetime import datetime, timedelta
 
 # Add src to path
 sys.path.append(os.path.abspath("src"))
@@ -8,9 +9,24 @@ sys.path.append(os.path.abspath("src"))
 from quant_strategy.presentation.cli.main import backtest_command
 
 if __name__ == "__main__":
-    print("Running backtest for 2025-11-01 to 2026-01-05")
+    parser = argparse.ArgumentParser(description='Run backtest with custom date range.')
+    parser.add_argument('--start', type=str, help='Start date (YYYY-MM-DD)', default=None)
+    parser.add_argument('--end', type=str, help='End date (YYYY-MM-DD)', default=None)
+    
+    args = parser.parse_args()
+    
+    # Default to recent 2 months if not specified
+    if not args.end:
+        args.end = datetime.now().strftime('%Y-%m-%d')
+    if not args.start:
+        # Default to 2 months ago
+        end_dt = datetime.strptime(args.end, '%Y-%m-%d')
+        args.start = (end_dt - timedelta(days=60)).strftime('%Y-%m-%d')
+
+    print(f"Running backtest for {args.start} to {args.end}")
+    
     try:
-        backtest_command(start="2025-11-01", end="2026-01-05")
+        backtest_command(start=args.start, end=args.end)
     except Exception as e:
         print(f"Error running backtest: {e}")
         import traceback

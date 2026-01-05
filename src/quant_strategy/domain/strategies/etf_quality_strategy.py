@@ -36,14 +36,16 @@ class EtfQualityStrategy:
     QUALITY_THRESHOLD = 60  # 최소 품질 점수
     ENTRY_K = 0.03  # 진입 k 값 (3%)
     
-    def __init__(self, exit_strategy: str = 'always_open'):
+    def __init__(self, exit_strategy: str = 'always_open', k: float = 0.03):
         """
         Args:
             exit_strategy: 'always_open' (무조건 시가, Default) or 'dynamic' (갭에 따라 시가/종가)
+            k: 진입 돌파 계수 (Default: 0.03 = 3%)
         """
         self.models = {}  # ticker -> model
         self.features = {}  # ticker -> feature_names
         self.exit_strategy = exit_strategy
+        self.k = k
     
     def calculate_quality_score(
         self,
@@ -223,7 +225,7 @@ class EtfQualityStrategy:
         current_open = df.loc[date, 'Open']
         
         # 진입가 계산
-        entry_price = current_open + (prev_range * self.ENTRY_K)
+        entry_price = current_open + (prev_range * self.k)
         
         # 5원 단위로 반올림
         entry_price = round(entry_price / 5) * 5
