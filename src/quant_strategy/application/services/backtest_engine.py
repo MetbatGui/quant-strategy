@@ -11,7 +11,7 @@ class BacktestService:
         """
         self.initial_capital = initial_capital
         self.risk_pct = risk_pct 
-        self.data_loader = MarketDataLoader()
+        self.data_loader = MarketDataLoader(start_date="2018-01-01")
         self.strategy = strategy
 
 
@@ -112,13 +112,30 @@ class BacktestService:
             # === [B. 매수 진입] ===
             # 피닉스 룰 발동 OR 일반 매수 신호
             elif shares == 0 and (signal == 'BUY' or is_phoenix_entry):
-                risk_amount = current_equity * self.risk_pct
-                # 공격적 사이징: 2 ATR Risk
-                risk_per_share = 2 * atr 
+                # [Dynamic Sizing V2]
+                # High Confidence (>=0.7) -> Direct Capital Allocation (Ignore ATR)
+                # Low Confidence (<0.7) -> Risk Adjusted Sizing (ATR)
                 
-                unit_size = int(risk_amount / risk_per_share)
+                confidence = getattr(self.strategy, 'current_score', 0.5)
+                
+                if confidence >= 0.70:
+                    # 🚀 Winner Concentration Mode
+                    # Allocate 30% of Equity DIRECTLY (High Risk, High Reward)
+                    target_exposure = 0.30
+                    invest_amount = current_equity * target_exposure
+                    buy_amount = int(invest_amount / current_price)
+                else:
+                    # 🛡️ Risk Managed Mode
+                    multiplier = confidence * 2.0
+                    dynamic_risk = self.risk_pct * multiplier
+                    dynamic_risk = max(0.01, min(dynamic_risk, 0.30))
+                    
+                    risk_amount = current_equity * dynamic_risk
+                    risk_per_share = 2 * atr 
+                    buy_amount = int(risk_amount / risk_per_share)
+
                 max_buyable = int(cash / current_price)
-                buy_amount = min(unit_size, max_buyable)
+                buy_amount = min(buy_amount, max_buyable)
 
                 if buy_amount > 0:
                     shares = buy_amount
@@ -137,9 +154,23 @@ class BacktestService:
                 # 0.3 ATR 상승 시
                 threshold = 0.3 * atr
                 if current_price > last_entry_price + threshold: 
-                    risk_amount = current_equity * self.risk_pct
-                    risk_per_share = 2 * atr
-                    unit_size = int(risk_amount / risk_per_share)
+                    # [Dynamic Sizing V2]
+                    confidence = getattr(self.strategy, 'current_score', 0.5)
+                    
+                    if confidence >= 0.70:
+                        # 🚀 Aggressive Pyramiding
+                        # Add 10% of Equity DIRECTLY
+                        invest_amount = current_equity * 0.10
+                        unit_size = int(invest_amount / current_price)
+                    else:
+                        # 🛡️ Risk Managed Pyramiding
+                        multiplier = confidence * 2.0
+                        dynamic_risk = self.risk_pct * multiplier
+                        dynamic_risk = max(0.01, min(dynamic_risk, 0.30))
+                        
+                        risk_amount = current_equity * dynamic_risk
+                        risk_per_share = 2 * atr
+                        unit_size = int(risk_amount / risk_per_share)
                     
                     max_buyable = int(cash / current_price)
                     buy_amount = min(unit_size, max_buyable)

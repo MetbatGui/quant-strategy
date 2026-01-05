@@ -149,30 +149,119 @@ class MarketDataLoader:
     
     def fetch_macro_data(self, start_date=None, end_date=None) -> pd.DataFrame:
         """
-        나스닥(^NDX) 및 환율(KRW=X) 데이터를 가져옴
+        나스닥(^NDX), 환율(KRW=X), 유가(CL=F), 금(GC=F), 미10년채(^TNX)
         """
         try:
-            tickers = ['^NDX', 'KRW=X'] # 나스닥100, 원달러환율
+            tickers = ['^NDX', 'KRW=X', 'CL=F', 'GC=F', '^TNX']
             macro_df = yf.download(tickers, start=start_date, end=end_date, progress=False)
             
-            # MultiIndex 컬럼 처리
             if isinstance(macro_df.columns, pd.MultiIndex):
-                # 'Close' 레벨만 가져오기
                 close_df = macro_df['Close'].copy()
             else:
                 close_df = macro_df.copy()
             
-            # 컬럼명 정리
-            # 다운로드된 컬럼이 symbol 이름으로 되어있음
-            # 예: KRW=X, ^NDX
-            
-            # 날짜 정렬 및 결측치 처리 (ffill)
             close_df = close_df.ffill()
-            
             return close_df
         except Exception as e:
             print(f"⚠️ Macro data fetch failed: {e}")
             return pd.DataFrame()
+
+    def fetch_data(self, ticker: str) -> pd.DataFrame:
+        # ... (Existing logic for download) ...
+        # 티커 처리
+        if not (ticker.endswith('.KS') or ticker.endswith('.KQ')):
+            ticker_symbol = f"{ticker}.KS"
+        else:
+            ticker_symbol = ticker
+        
+        df = yf.download(ticker_symbol, start=self.start_date, progress=False)
+        if df.empty: return pd.DataFrame()
+        
+        df = df[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
+        if isinstance(df.columns, pd.MultiIndex):
+             df.columns = df.columns.get_level_values(0)
+
+        # 수급 데이터 병합
+        try:
+            df = self._merge_investor_data(df, ticker)
+        except:
+            df['Foreigner'] = 0
+            df['Institution'] = 0
+
+        # === Indicators ===
+        df['MA5'] = df['Close'].rolling(window=5).mean()
+        df['MA20'] = df['Close'].rolling(window=20).mean()
+        df['MA60'] = df['Close'].rolling(window=60).mean()
+        df = self._add_atr(df)
+
+        # RSI
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        df['RSI'] = 100 - (100 / (1 + gain/loss))
+
+        # MFI
+        tp = (df['High'] + df['Low'] + df['Close']) / 3
+        mf = tp * df['Volume']
+        pos = mf.where(tp > tp.shift(1), 0).rolling(14).sum()
+        neg = mf.where(tp < tp.shift(1), 0).rolling(14).sum()
+        df['MFI'] = 100 - (100 / (1 + pos/neg))
+
+        # MACD
+        exp12 = df['Close'].ewm(span=12, adjust=False).mean()
+        exp26 = df['Close'].ewm(span=26, adjust=False).mean()
+        df['MACD'] = exp12 - exp26
+        df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+        
+        # Bollinger Bands & Width (Squeeze Detection)
+        std = df['Close'].rolling(20).std()
+        df['BB_Mid'] = df['Close'].rolling(20).mean()
+        df['BB_Upper'] = df['BB_Mid'] + 2*std
+        df['BB_Lower'] = df['BB_Mid'] - 2*std
+        df['BB_Width'] = (df['BB_Upper'] - df['BB_Lower']) / df['BB_Mid']
+
+        # [NEW] OBV (On-Balance Volume) - Whale Tracking Core
+        df['OBV'] = (np.sign(df['Close'].diff()) * df['Volume']).fillna(0).cumsum()
+
+        # [NEW] Stochastic Oscillator (Fast)
+        low_14 = df['Low'].rolling(14).min()
+        high_14 = df['High'].rolling(14).max()
+        df['Stoch_K'] = 100 * ((df['Close'] - low_14) / (high_14 - low_14))
+        df['Stoch_D'] = df['Stoch_K'].rolling(3).mean()
+
+        # [NEW] Ichimoku Cloud
+        # Conversion Line (Tenkan-sen): (9-period high + 9-period low)/2
+        nine_high = df['High'].rolling(window=9).max()
+        nine_low = df['Low'].rolling(window=9).min()
+        df['Ichimoku_Conv'] = (nine_high + nine_low) / 2
+        
+        # Base Line (Kijun-sen): (26-period high + 26-period low)/2
+        twenty_six_high = df['High'].rolling(window=26).max()
+        twenty_six_low = df['Low'].rolling(window=26).min()
+        df['Ichimoku_Base'] = (twenty_six_high + twenty_six_low) / 2
+        
+        # Leading Span A (Senkou Span A): (Conversion + Base)/2
+        df['Ichimoku_SpanA'] = ((df['Ichimoku_Conv'] + df['Ichimoku_Base']) / 2).shift(26)
+        
+        # Leading Span B (Senkou Span B): (52-period high + 52-period low)/2
+        fifty_two_high = df['High'].rolling(window=52).max()
+        fifty_two_low = df['Low'].rolling(window=52).min()
+        df['Ichimoku_SpanB'] = ((fifty_two_high + fifty_two_low) / 2).shift(26)
+
+        # [NEW] CCI (Commodity Channel Index)
+        tp = (df['High'] + df['Low'] + df['Close']) / 3
+        sma_tp = tp.rolling(20).mean()
+        mean_dev = tp.rolling(20).apply(lambda x: np.mean(np.abs(x - np.mean(x))))
+        df['CCI'] = (tp - sma_tp) / (0.015 * mean_dev)
+
+        # [NEW] Williams %R
+        # %R = (Highest High - Close) / (Highest High - Lowest Low) * -100
+        hh14 = df['High'].rolling(14).max()
+        ll14 = df['Low'].rolling(14).min()
+        df['WilliamsR'] = -100 * ((hh14 - df['Close']) / (hh14 - ll14))
+
+        df = df.dropna()
+        return df
 
     def _add_atr(self, df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
         """
