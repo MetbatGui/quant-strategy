@@ -11,5 +11,5 @@ exit_strategy = "always_open" # Options: "always_open", "dynamic"
 "091180.KS" = "KODEX 자동차"
 # "117680.KS" = "KODEX 철강" (Removed for risk-reward imbalance)
 "266390.KS" = "KODEX 미디어&엔터"
-"132030.KS" = "KODEX 골드선물(H)"
+# "132030.KS" = "KODEX 골드선물(H)"
 "152380.KS" = "KODEX 국채선물10년"
