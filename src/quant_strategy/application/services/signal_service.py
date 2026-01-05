@@ -109,88 +109,72 @@ class SignalService:
                         print(f"   - {key}: {value}")
                     print()
         
-        # 5. 최적 ETF 선택
-        best_ticker = self.strategy.select_best_etf(scores)
+        # 5. 최적 ETF 선택 (Top 3)
+        top_tickers = self.strategy.select_top_etfs(scores, n=3)
         
         print("=" * 80)
-        print("🎯 거래 신호")
+        print("🎯 거래 신호 (Multi-Target Strategy)")
+        print("   우선순위대로 진입을 시도합니다. (1일 1종목 진입)")
         print("=" * 80)
         print()
         
-        if best_ticker is None:
-            max_ticker = max(scores, key=scores.get) if scores else None
-            if max_ticker:
-                print(f"⚠️  최고 점수 종목: {self.strategy.ETF_POOL[max_ticker]} ({scores[max_ticker]}점)")
-                print(f"   품질 점수가 {self.strategy.QUALITY_THRESHOLD}점 미만이므로 거래 보류 권장")
-            else:
-                print("❌ 분석 가능한 데이터가 없습니다.")
+        if not top_tickers:
+            print("❌ 분석 가능한 데이터가 없거나 60점 이상인 종목이 없습니다.")
             print()
             return {
                 'signal': 'HOLD',
                 'reason': 'Low quality score'
             }
         
-        best_score = scores[best_ticker]
-        best_name = self.strategy.ETF_POOL[best_ticker]
-        latest_price_data = latest_prices[best_ticker]
+        signals = []
         
-        # 6. 전일 변동폭 계산 (진입 공식에 필요)
-        df = etf_data[best_ticker]
-        latest_idx = df.index.get_loc(latest_date)
-        
-        if latest_idx > 0:
-            prev_data = df.iloc[latest_idx - 1]
-            prev_range = prev_data['High'] - prev_data['Low']
-        else:
-            # 최신일이 첫날인 경우
-            prev_range = latest_price_data['High'] - latest_price_data['Low']
-        
-        # 다음 거래일 예상 (참고용)
-        future_dates = all_dates[all_dates > latest_date]
-        if len(future_dates) == 0:
-            next_date = latest_date + timedelta(days=1)
-        else:
-            next_date = future_dates[0]
-        
-        # 참고용 예상 진입가 (최신 종가 기준)
-        reference_entry = latest_price_data['Close'] + (prev_range * self.strategy.ENTRY_K)
-        reference_entry = round(reference_entry / 5) * 5
-        
-        print(f"✅ 선정 종목: {best_name}")
-        print(f"   티커: {best_ticker}")
-        print(f"   품질 점수: {best_score}점")
-        print()
-        print(f"📈 최신 거래일({latest_date.strftime('%Y-%m-%d')}) 정보:")
-        print(f"   종가: {latest_price_data['Close']:,.0f}원")
-        print(f"   전일 변동폭(High-Low): {prev_range:,.0f}원")
-        print()
-        print(f"🎯 다음 거래일({next_date.strftime('%Y-%m-%d')}) 진입 전략:")
-        print(f"   📌 진입가 계산식: 당일 시가 + (전일 변동폭 × 3%)")
-        print(f"   📌 전일 변동폭: {prev_range:,.0f}원")
-        print(f"   📌 변동폭 3%: {prev_range * 0.03:,.0f}원")
-        print()
-        print(f"   💡 참고: 최신 종가({latest_price_data['Close']:,.0f}원) 기준 예상 진입가는 약 {reference_entry:,.0f}원")
-        print(f"          (실제 진입가는 다음 거래일 시가에 따라 결정됩니다)")
+        for rank, ticker in enumerate(top_tickers, 1):
+            score = scores[ticker]
+            name = self.strategy.ETF_POOL[ticker]
+            latest_price_data = latest_prices[ticker]
+            
+            # 전일 변동폭 계산
+            df = etf_data[ticker]
+            latest_idx = df.index.get_loc(latest_date)
+            
+            if latest_idx > 0:
+                prev_data = df.iloc[latest_idx - 1]
+                prev_range = prev_data['High'] - prev_data['Low']
+            else:
+                prev_range = latest_price_data['High'] - latest_price_data['Low']
+            
+            # 예상 진입가
+            reference_entry = latest_price_data['Close'] + (prev_range * self.strategy.ENTRY_K)
+            reference_entry = round(reference_entry / 5) * 5
+            
+            print(f"[{rank}순위] {name} ({ticker})")
+            print(f"   품질 점수: {score}점")
+            print(f"   기준 종가: {latest_price_data['Close']:,.0f}원")
+            print(f"   전일 변동폭: {prev_range:,.0f}원")
+            print(f"   예상 진입가: {reference_entry:,.0f}원 (시가 + {prev_range * 0.03:,.0f}원)")
+            print("-" * 40)
+            
+            signals.append({
+                'rank': rank,
+                'ticker': ticker,
+                'name': name,
+                'score': score,
+                'reference_entry': reference_entry,
+                'prev_range': prev_range,
+                'score_details': score_details_map[ticker]
+            })
+            
         print()
         print(f"📋 실전 가이드:")
-        print(f"   1. 다음 거래일 시가 확인")
-        print(f"   2. 진입가 = 시가 + {prev_range * 0.03:,.0f}원 으로 계산")
-        print(f"   3. 당일 고가가 진입가 돌파 시 매수")
-        print(f"   4. 익일 갭 상승(시가 > 전일 종가) → 익일 종가에 청산")
-        print(f"   5. 익일 갭 하락(시가 ≤ 전일 종가) → 익일 시가에 청산")
+        print(f"   1. 장 시작 시 1순위({self.strategy.ETF_POOL[top_tickers[0]]})부터 모니터링")
+        print(f"   2. 1순위 종목이 진입가 돌파 시 -> 매수 후 종료")
+        print(f"   3. 1순위 돌파 실패 시 -> 2순위, 3순위 순서로 기회 포착")
+        print(f"   4. 청산 규칙은 기존과 동일 (갭상승 홀딩, 갭하락 시가청산)")
         print()
         print("=" * 80)
         
         return {
             'signal': 'BUY',
-            'selected_etf': best_ticker,
-            'etf_name': best_name,
-            'quality_score': best_score,
-            'reference_entry_price': reference_entry,  # 참고용 예상 진입가
-            'prev_range': prev_range,  # 전일 변동폭
-            'entry_formula': f"시가 + {prev_range * 0.03:,.0f}원",  # 진입 공식
-            'latest_close': latest_price_data['Close'],
-            'latest_date': latest_date.strftime('%Y-%m-%d'),
-            'next_date': next_date.strftime('%Y-%m-%d'),
-            'score_details': score_details_map[best_ticker]
+            'targets': signals,
+            'latest_date': latest_date.strftime('%Y-%m-%d')
         }

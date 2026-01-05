@@ -115,15 +115,16 @@ class BacktestEngine:
                     scores[ticker] = score
                     score_details_map[ticker] = details
                 
-                # 4-2. 최적 ETF 선택
-                best_ticker = self.strategy.select_best_etf(scores)
+                # 4-2. 상위 3개 ETF 선택 (Multi-Target Strategy)
+                top_tickers = self.strategy.select_top_etfs(scores, n=3)
                 
-                if best_ticker:
-                    best_score = scores[best_ticker]
-                    best_name = self.strategy.ETF_POOL[best_ticker]
+                # 순차적으로 진입 시그널 확인
+                for ticker in top_tickers:
+                    score = scores[ticker]
+                    name = self.strategy.ETF_POOL[ticker]
                     
                     # 4-3. 진입가 계산
-                    df = etf_data[best_ticker]
+                    df = etf_data[ticker]
                     entry_price = self.strategy.calculate_entry_price(df, current_date)
                     
                     if entry_price:
@@ -131,18 +132,19 @@ class BacktestEngine:
                         entered = self.strategy.check_entry_signal(df, current_date, entry_price)
                         
                         if entered:
-                            # 거래 생성
+                            # 거래 생성 (첫 번째로 걸린 종목 매수 후 루프 종료)
                             trade = Trade(
-                                ticker=best_ticker,
-                                ticker_name=best_name,
+                                ticker=ticker,
+                                ticker_name=name,
                                 entry_date=current_date,
                                 entry_price=entry_price,
-                                quality_score=best_score,
-                                score_details=score_details_map[best_ticker]
+                                quality_score=score,
+                                score_details=score_details_map[ticker]
                             )
                             self.portfolio.open_position(trade)
                             
-                            print(f"🔵 진입: {current_date.strftime('%Y-%m-%d')} | {best_name} | {entry_price:,.0f}원 | 점수: {best_score}")
+                            print(f"🔵 진입: {current_date.strftime('%Y-%m-%d')} | {name} | {entry_price:,.0f}원 | 점수: {score}")
+                            break  # 1일 1종목 진입 원칙
             
             # 포지션이 열려있으면 청산 확인
             if self.portfolio.current_position is not None:

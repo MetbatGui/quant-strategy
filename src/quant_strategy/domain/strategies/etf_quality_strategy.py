@@ -8,7 +8,7 @@ ETF 품질 점수 기반 전략
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from typing import Tuple, Dict, Optional
+from typing import Tuple, Dict, Optional, List
 from quant_strategy.domain.indicators.technical import (
     calculate_rsi,
     calculate_volume_ratio
@@ -161,28 +161,36 @@ class EtfQualityStrategy:
         except Exception as e:
             return 0, {'Error': str(e)}
     
-    def select_best_etf(self, etf_scores: Dict[str, int]) -> Optional[str]:
+    def select_top_etfs(self, etf_scores: Dict[str, int], n: int = 3) -> List[str]:
         """
-        최고 점수 ETF 선택
+        상위 N개 ETF 선택
         
         Args:
             etf_scores: {ticker: score} 딕셔너리
+            n: 선택할 개수
         
         Returns:
-            최고 점수 티커 또는 None
+            점수 내림차순 정렬된 티커 리스트
         """
         if not etf_scores:
-            return None
+            return []
         
         # 60점 이상만 필터링
         qualified = {k: v for k, v in etf_scores.items() if v >= self.QUALITY_THRESHOLD}
         
         if not qualified:
-            return None
+            return []
         
-        # 최고 점수 선택
-        best_ticker = max(qualified, key=qualified.get)
-        return best_ticker
+        # 점수 내림차순 정렬
+        sorted_tickers = sorted(qualified.keys(), key=lambda k: qualified[k], reverse=True)
+        return sorted_tickers[:n]
+
+    def select_best_etf(self, etf_scores: Dict[str, int]) -> Optional[str]:
+        """
+        최고 점수 ETF 선택 (하위 호환성 유지)
+        """
+        top = self.select_top_etfs(etf_scores, n=1)
+        return top[0] if top else None
     
     def calculate_entry_price(self, df: pd.DataFrame, date: pd.Timestamp) -> Optional[float]:
         """
