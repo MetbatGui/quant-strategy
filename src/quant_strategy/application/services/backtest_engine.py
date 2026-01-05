@@ -39,10 +39,10 @@ class BacktestEngine:
             adjusted_start = train_start
             print(f"📥 ETF 데이터 로딩 (학습용): {adjusted_start} ~ {end_date}")
         else:
-            # 기본값: 시작일 6개월 전
+            # 기본값: 시작일 430일 전 (사용자 최적화 기간: 24.11.01 기준)
             start_dt = pd.to_datetime(start_date)
-            adjusted_start = (start_dt - timedelta(days=180)).strftime('%Y-%m-%d')
-            print(f"📥 ETF 데이터 로딩 (기본 6개월): {adjusted_start} ~ {end_date}")
+            adjusted_start = (start_dt - timedelta(days=430)).strftime('%Y-%m-%d')
+            print(f"📥 ETF 데이터 로딩 (기본 430일): {adjusted_start} ~ {end_date}")
         
         for ticker, name in self.strategy.ETF_POOL.items():
             try:
