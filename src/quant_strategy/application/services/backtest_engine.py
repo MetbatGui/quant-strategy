@@ -19,24 +19,30 @@ class BacktestEngine:
         self.portfolio = Portfolio(initial_capital)
         self.initial_capital = initial_capital
     
-    def load_etf_data(self, start_date: str, end_date: str) -> Dict[str, pd.DataFrame]:
+    def load_etf_data(self, start_date: str, end_date: str, train_start: str = None) -> Dict[str, pd.DataFrame]:
         """
         전체 ETF 데이터 로드
         
         Args:
-            start_date: 시작일
+            start_date: 백테스트 시뮬레이션 시작일
             end_date: 종료일
+            train_start: 모델 학습 시작일 (없으면 start_date - 180일)
         
         Returns:
             {ticker: DataFrame} 딕셔너리
         """
         etf_data = {}
         
-        # 충분한 과거 데이터 확보를 위해 시작일 3개월 전부터 로드
-        start_dt = pd.to_datetime(start_date)
-        adjusted_start = (start_dt - timedelta(days=180)).strftime('%Y-%m-%d')
-        
-        print(f"📥 ETF 데이터 로딩 중... ({adjusted_start} ~ {end_date})")
+        # 모델 학습을 위한 시작일 설정
+        if train_start:
+            # 명시된 학습 시작일 사용
+            adjusted_start = train_start
+            print(f"📥 ETF 데이터 로딩 (학습용): {adjusted_start} ~ {end_date}")
+        else:
+            # 기본값: 시작일 6개월 전
+            start_dt = pd.to_datetime(start_date)
+            adjusted_start = (start_dt - timedelta(days=180)).strftime('%Y-%m-%d')
+            print(f"📥 ETF 데이터 로딩 (기본 6개월): {adjusted_start} ~ {end_date}")
         
         for ticker, name in self.strategy.ETF_POOL.items():
             try:
@@ -62,23 +68,26 @@ class BacktestEngine:
         
         return etf_data
     
-    def run(self, start_date: str, end_date: str) -> Dict:
+    def run(self, start_date: str, end_date: str, train_start: str = None) -> Dict:
         """
         백테스트 실행
         
         Args:
             start_date: 백테스트 시작일
             end_date: 백테스트 종료일
+            train_start: 모델 학습 시작일 (Optional)
         
         Returns:
             백테스트 결과 딕셔너리
         """
         print("\n" + "="*80)
         print(f"🚀 백테스트 시작: {start_date} ~ {end_date}")
+        if train_start:
+            print(f"📊 모델 학습 기간: {train_start} ~ {end_date}")
         print("="*80 + "\n")
         
         # 1. 데이터 로드
-        etf_data = self.load_etf_data(start_date, end_date)
+        etf_data = self.load_etf_data(start_date, end_date, train_start)
         
         if not etf_data:
             print("❌ 데이터가 없습니다.")

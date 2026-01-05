@@ -12,6 +12,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run backtest with custom date range.')
     parser.add_argument('--start', type=str, help='Start date (YYYY-MM-DD)', default=None)
     parser.add_argument('--end', type=str, help='End date (YYYY-MM-DD)', default=None)
+    parser.add_argument('--train-start', type=str, help='Training start date (YYYY-MM-DD)', default=None)
     
     args = parser.parse_args()
     
@@ -26,7 +27,7 @@ if __name__ == "__main__":
     print(f"Running backtest for {args.start} to {args.end}")
     
     try:
-        backtest_command(start=args.start, end=args.end)
+        backtest_command(start=args.start, end=args.end, train_start=args.train_start)
     except Exception as e:
         print(f"Error running backtest: {e}")
         import traceback

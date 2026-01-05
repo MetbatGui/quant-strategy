@@ -2,7 +2,7 @@
 퀀트 전략 CLI
 """
 
-def backtest_command(start: str = "2024-01-01", end: str = "2025-01-01"):
+def backtest_command(start: str = "2024-01-01", end: str = "2025-01-01", train_start: str = None):
     """백테스트 실행"""
     from quant_strategy.domain.strategies.etf_quality_strategy import EtfQualityStrategy
     from quant_strategy.application.services.backtest_engine import BacktestEngine
@@ -10,7 +10,7 @@ def backtest_command(start: str = "2024-01-01", end: str = "2025-01-01"):
     strategy = EtfQualityStrategy()
     engine = BacktestEngine(strategy, initial_capital=10_000_000)
     
-    result = engine.run(start, end)
+    result = engine.run(start, end, train_start)
     
     return result
 

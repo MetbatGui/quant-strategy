@@ -4,7 +4,7 @@ k = 0.03
 exit_strategy = "always_open" # Options: "always_open", "dynamic"
 
 [etf_pool]
-"069500.KS" = "KODEX 200"
+# "069500.KS" = "KODEX 200" (Removed for low performance)
 "091160.KS" = "KODEX 반도체"
 "140700.KS" = "KODEX 금융"
 "244580.KS" = "KODEX 2차전지K-뉴딜"
