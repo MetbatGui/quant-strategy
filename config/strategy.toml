@@ -1,0 +1,15 @@
+[strategy]
+quality_threshold = 60
+k = 0.03
+exit_strategy = "always_open" # Options: "always_open", "dynamic"
+
+[etf_pool]
+"069500.KS" = "KODEX 200"
+"091160.KS" = "KODEX 반도체"
+"140700.KS" = "KODEX 금융"
+"244580.KS" = "KODEX 2차전지K-뉴딜"
+"091180.KS" = "KODEX 자동차"
+"117680.KS" = "KODEX 철강"
+"266390.KS" = "KODEX 미디어&엔터"
+"132030.KS" = "KODEX 골드선물(H)"
+"152380.KS" = "KODEX 국채선물10년"

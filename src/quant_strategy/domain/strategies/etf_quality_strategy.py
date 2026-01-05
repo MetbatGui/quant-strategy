@@ -13,6 +13,8 @@ from quant_strategy.domain.indicators.technical import (
     calculate_rsi,
     calculate_volume_ratio
 )
+import tomllib
+from pathlib import Path
 from quant_strategy.domain.ml.predictor import (
     train_xgboost_model,
     predict_trade_return
@@ -20,32 +22,47 @@ from quant_strategy.domain.ml.predictor import (
 
 
 class EtfQualityStrategy:
-    """ETF 품질 점수 전략"""
+    """ETF Quality Score Strategy (Refactored to use TOML config)"""
     
-    # 7개 일반 ETF 풀
-    ETF_POOL = {
-        "069500.KS": "KODEX 200",
-        "091160.KS": "KODEX 반도체",
-        "091170.KS": "KODEX 금융",
-        "091180.KS": "KODEX 자동차",
-        "305720.KS": "KODEX 2차전지K-뉴딜",
-        "117680.KS": "KODEX 철강",
-        "266390.KS": "KODEX 미디어&엔터",
-    }
-    
-    QUALITY_THRESHOLD = 60  # 최소 품질 점수
-    ENTRY_K = 0.03  # 진입 k 값 (3%)
-    
-    def __init__(self, exit_strategy: str = 'always_open', k: float = 0.03):
-        """
-        Args:
-            exit_strategy: 'always_open' (무조건 시가, Default) or 'dynamic' (갭에 따라 시가/종가)
-            k: 진입 돌파 계수 (Default: 0.03 = 3%)
-        """
-        self.models = {}  # ticker -> model
-        self.features = {}  # ticker -> feature_names
-        self.exit_strategy = exit_strategy
-        self.k = k
+    def __init__(self, config_path: str = "config/strategy.toml"):
+        self.models = {}
+        self.features = {}
+        
+        # Load Configuration
+        self.config = self._load_config(config_path)
+        
+        # Apply Config
+        self.ETF_POOL = self.config['etf_pool']
+        self.QUALITY_THRESHOLD = self.config['strategy']['quality_threshold']
+        self.k = self.config['strategy']['k']
+        self.exit_strategy = self.config['strategy']['exit_strategy']
+
+    def _load_config(self, path: str) -> Dict:
+        """Load configuration from TOML file"""
+        try:
+            # Try absolute path first, then relative to project root
+            file_path = Path(path)
+            if not file_path.exists():
+                # Fallback: assume running from project root
+                file_path = Path.cwd() / path
+                
+            if not file_path.exists():
+                # Fallback 2: hardcoded defaults if file missing (optional, but good for safety)
+                print(f"Warning: Config file not found at {path}. Using internal defaults.")
+                return {
+                    'strategy': {'quality_threshold': 60, 'k': 0.03, 'exit_strategy': 'always_open'},
+                    'etf_pool': {
+                        '069500.KS': 'KODEX 200', '091160.KS': 'KODEX 반도체', '140700.KS': 'KODEX 금융',
+                        '244580.KS': 'KODEX 2차전지K-뉴딜', '091180.KS': 'KODEX 자동차', '117680.KS': 'KODEX 철강',
+                        '266390.KS': 'KODEX 미디어&엔터', '132030.KS': 'KODEX 골드선물(H)', '152380.KS': 'KODEX 국채선물10년'
+                    }
+                }
+                
+            with open(file_path, "rb") as f:
+                return tomllib.load(f)
+        except Exception as e:
+            print(f"Error loading config: {e}")
+            raise e
     
     def calculate_quality_score(
         self,
