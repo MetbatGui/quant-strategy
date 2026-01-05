@@ -109,12 +109,12 @@ class SignalService:
                         print(f"   - {key}: {value}")
                     print()
         
-        # 5. 최적 ETF 선택 (Top 3)
-        top_tickers = self.strategy.select_top_etfs(scores, n=3)
+        # 5. 최적 ETF 선택 (Top 1)
+        top_tickers = self.strategy.select_top_etfs(scores, n=1)
         
         print("=" * 80)
-        print("🎯 거래 신호 (Multi-Target Strategy)")
-        print("   우선순위대로 진입을 시도합니다. (1일 1종목 진입)")
+        print("🎯 거래 신호 (All-In Strategy)")
+        print("   오늘의 1순위 대장주 하나만 공략합니다.")
         print("=" * 80)
         print()
         
@@ -166,9 +166,9 @@ class SignalService:
             
         print()
         print(f"📋 실전 가이드:")
-        print(f"   1. 장 시작 시 1순위({self.strategy.ETF_POOL[top_tickers[0]]})부터 모니터링")
-        print(f"   2. 1순위 종목이 진입가 돌파 시 -> 매수 후 종료")
-        print(f"   3. 1순위 돌파 실패 시 -> 2순위, 3순위 순서로 기회 포착")
+        print(f"   1. 장 시작 시 1순위({self.strategy.ETF_POOL[top_tickers[0]]}) 자동감시주문 설정")
+        print(f"   2. 진입가 도달 시 자동 체결")
+        print(f"   3. 나머지는 무시 (집중 투자)")
         print(f"   4. 청산 규칙은 기존과 동일 (갭상승 홀딩, 갭하락 시가청산)")
         print()
         print("=" * 80)

@@ -14,10 +14,11 @@ from quant_strategy.domain.entities.portfolio import Portfolio
 class BacktestEngine:
     """백테스트 엔진"""
     
-    def __init__(self, strategy: EtfQualityStrategy, initial_capital: float = 10_000_000):
+    def __init__(self, strategy: EtfQualityStrategy, initial_capital: float = 10_000_000, top_n: int = 1):
         self.strategy = strategy
         self.portfolio = Portfolio(initial_capital)
         self.initial_capital = initial_capital
+        self.top_n = top_n
     
     def load_etf_data(self, start_date: str, end_date: str, train_start: str = None) -> Dict[str, pd.DataFrame]:
         """
@@ -124,8 +125,8 @@ class BacktestEngine:
                     scores[ticker] = score
                     score_details_map[ticker] = details
                 
-                # 4-2. 상위 3개 ETF 선택 (Multi-Target Strategy)
-                top_tickers = self.strategy.select_top_etfs(scores, n=3)
+                # 4-2. 상위 N개 ETF 선택
+                top_tickers = self.strategy.select_top_etfs(scores, n=self.top_n)
                 
                 # 순차적으로 진입 시그널 확인
                 for ticker in top_tickers:
