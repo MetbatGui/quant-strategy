@@ -1,194 +1,231 @@
+"""
+ETF 품질 점수 전략 백테스트 엔진
+"""
+
 import pandas as pd
-import numpy as np
-from quant_strategy.infrastructure.data_loader import MarketDataLoader
+import yfinance as yf
+from datetime import datetime, timedelta
+from typing import Dict, List
+from quant_strategy.domain.strategies.etf_quality_strategy import EtfQualityStrategy
+from quant_strategy.domain.entities.trade import Trade
+from quant_strategy.domain.entities.portfolio import Portfolio
 
-class BacktestService:
-    def __init__(self, strategy, initial_capital=100_000_000, risk_pct=0.05):
-        """
-        :param strategy: 사용할 전략 인스턴스 (Duck Typing)
-        :param initial_capital: 초기 자본금
-        :param risk_pct: 리스크 허용 비율 (기본 5%)
-        """
-        self.initial_capital = initial_capital
-        self.risk_pct = risk_pct 
-        self.data_loader = MarketDataLoader(start_date="2018-01-01")
+
+class BacktestEngine:
+    """백테스트 엔진"""
+    
+    def __init__(self, strategy: EtfQualityStrategy, initial_capital: float = 10_000_000):
         self.strategy = strategy
-
-
-    def run(self, ticker: str, start_date: str, end_date: str):
-        # 1. 데이터 준비
-        raw_df = self.data_loader.fetch_data(ticker)
-        if raw_df.empty:
-            print(f"⚠️ 데이터 없음: {ticker}")
-            return pd.DataFrame()
+        self.portfolio = Portfolio(initial_capital)
+        self.initial_capital = initial_capital
+    
+    def load_etf_data(self, start_date: str, end_date: str) -> Dict[str, pd.DataFrame]:
+        """
+        전체 ETF 데이터 로드
         
-        # 매크로 데이터 가져오기 (나스닥, 환율)
-        # 충분한 윈도우(MA60) 확보를 위해 start_date보다 미리 가져오면 좋지만,
-        # 편의상 전체를 가져와서 내부 Join으로 처리
-        macro_df = self.data_loader.fetch_macro_data()
-
-        raw_df = raw_df[(raw_df.index >= pd.to_datetime(start_date)) & (raw_df.index <= pd.to_datetime(end_date))]
-        if raw_df.empty:
-            return pd.DataFrame()
+        Args:
+            start_date: 시작일
+            end_date: 종료일
         
-        # 지표 추가 (MA, ATR, Macro 등)
-        # 지표 추가 (MA, ATR, Macro 등)
-        df = self.strategy.add_indicators(raw_df, macro_df=macro_df)
-        df['Action'] = None 
+        Returns:
+            {ticker: DataFrame} 딕셔너리
+        """
+        etf_data = {}
         
-        # 5일 이동평균선 확인 (피닉스 룰용)
-        if 'MA5' not in df.columns:
-            df['MA5'] = df['Close'].rolling(window=5).mean()
-
-        # 2. 시뮬레이션 변수
-        cash = self.initial_capital
-        shares = 0
+        # 충분한 과거 데이터 확보를 위해 시작일 3개월 전부터 로드
+        start_dt = pd.to_datetime(start_date)
+        adjusted_start = (start_dt - timedelta(days=180)).strftime('%Y-%m-%d')
         
-        units = 0            
-        last_entry_price = 0 
-        self.avg_price = 0 # 평단가 (수익률 계산용)
-        # stop_loss_price는 이제 Strategy의 Chandelier Exit이 담당하므로 보조적 역할(안전망)만 수행
-        stop_loss_price = 0
-        last_exit_idx = -1 # 마지막 매도 시점 (피닉스 룰용)
+        print(f"📥 ETF 데이터 로딩 중... ({adjusted_start} ~ {end_date})")
         
-        equity_curve = []
-
-        # 대조군 계산
-        if not df.empty:
-            hold_shares = self.initial_capital / df['Open'].iloc[0]
-            df['Equity_Hold'] = hold_shares * df['Close']
-
-        # 3. 루프 실행
-        for i in range(len(df)):
-            curr_row = df.iloc[i]
-            prev_row = df.iloc[i-1] if i > 0 else curr_row
-            
-            current_price = curr_row['Close']
-            atr = curr_row.get('ATR', 0)
-            if pd.isna(atr) or atr == 0: 
-                atr = current_price * 0.02 
-            
-            # [전략 로직 위임]
-            # 엔진에서는 복잡한 손절 계산을 하지 않고, 전략이 'SELL'을 주면 판다.
-            # 단, 안전망(Safety Net)으로 진입가 대비 -10% 등 강제 손절 기능을 둘 순 있으나,
-            # 여기서는 전략의 Chandelier Exit을 신뢰.
-
-            current_equity = cash + (shares * current_price)
-            
-            # ------------------------------------
-            # [Step 0] 피닉스 룰 (즉시 재진입)
-            # ------------------------------------
-            is_phoenix_entry = False
-            # 매크로 전략에서는 '시스템 리스크(나스닥 하락)' 시 진입 금지이므로,
-            # 피닉스 룰도 나스닥 불장일 때만 작동해야 함.
-            macro_bull = curr_row.get('Macro_Bull', 1)
-            
-            if macro_bull == 1 and shares == 0 and last_exit_idx != -1:
-                days_since_exit = (df.index[i] - df.index[last_exit_idx]).days
-                ma5 = curr_row.get('MA5', 0)
+        for ticker, name in self.strategy.ETF_POOL.items():
+            try:
+                df_raw = yf.download(ticker, start=adjusted_start, end=end_date, progress=False)
                 
-                if days_since_exit <= 3 and current_price > ma5:
-                    is_phoenix_entry = True
-
-            # ------------------------------------
-            # [Step 1] 전략 신호 확인 (매도 포함)
-            # ------------------------------------
-            # 5. 매매 신호 확인
-            # entry_price(평단가)를 전달하여 수익률 기반 로직 가능하게 함
-            has_position = (shares > 0)
-            signal = self.strategy.check_signals(curr_row, prev_row, has_position, entry_price=self.avg_price)
-            
-            # 6. 매수/매도 실행
-            # === [A. 매도 청산] ===
-            # 나스닥 폭락 or 개별 종목 악재
-            if shares > 0 and signal == 'SELL':
-                cash += shares * current_price
-                shares = 0
-                units = 0
-                self.avg_price = 0 # 매도 시 평균 매수 단가 초기화
-                last_exit_idx = i
-                df.at[curr_row.name, 'Action'] = 'SELL'
-            
-            # === [B. 매수 진입] ===
-            # 피닉스 룰 발동 OR 일반 매수 신호
-            elif shares == 0 and (signal == 'BUY' or is_phoenix_entry):
-                # [Dynamic Sizing V2]
-                # High Confidence (>=0.7) -> Direct Capital Allocation (Ignore ATR)
-                # Low Confidence (<0.7) -> Risk Adjusted Sizing (ATR)
+                # MultiIndex 제거
+                if isinstance(df_raw.columns, pd.MultiIndex):
+                    df_raw.columns = [col[0] if isinstance(col, tuple) else col for col in df_raw.columns]
                 
-                confidence = getattr(self.strategy, 'current_score', 0.5)
+                if not df_raw.empty:
+                    df = pd.DataFrame()
+                    df['Open'] = df_raw['Open']
+                    df['High'] = df_raw['High']
+                    df['Low'] = df_raw['Low']
+                    df['Close'] = df_raw['Close']
+                    if 'Volume' in df_raw.columns:
+                        df['Volume'] = df_raw['Volume']
+                    
+                    etf_data[ticker] = df
+                    print(f"  ✅ {name}: {len(df)} 일")
+            except Exception as e:
+                print(f"  ❌ {name}: {e}")
+        
+        return etf_data
+    
+    def run(self, start_date: str, end_date: str) -> Dict:
+        """
+        백테스트 실행
+        
+        Args:
+            start_date: 백테스트 시작일
+            end_date: 백테스트 종료일
+        
+        Returns:
+            백테스트 결과 딕셔너리
+        """
+        print("\n" + "="*80)
+        print(f"🚀 백테스트 시작: {start_date} ~ {end_date}")
+        print("="*80 + "\n")
+        
+        # 1. 데이터 로드
+        etf_data = self.load_etf_data(start_date, end_date)
+        
+        if not etf_data:
+            print("❌ 데이터가 없습니다.")
+            return {}
+        
+        # 2. 모델 학습
+        print("\n🤖 XGBoost 모델 학습 중...")
+        self.strategy.train_models(etf_data)
+        print(f"  ✅ {len(self.strategy.models)}개 모델 학습 완료")
+        
+        # 3. 거래일 생성 (첫 번째 ETF 기준)
+        first_ticker = list(etf_data.keys())[0]
+        all_dates = etf_data[first_ticker].index
+        backtest_dates = all_dates[all_dates >= pd.to_datetime(start_date)]
+        
+        print(f"\n📅 백테스트 기간: {len(backtest_dates)} 거래일")
+        print("\n" + "="*80)
+        print("거래 시뮬레이션 시작")
+        print("="*80 + "\n")
+        
+        # 4. 백테스트 루프
+        i = 0
+        while i < len(backtest_dates):
+            current_date = backtest_dates[i]
+            
+            # 포지션이 없을 때만 새로운 진입 시도
+            if self.portfolio.current_position is None:
+                # 4-1. 품질 점수 계산
+                scores = {}
+                score_details_map = {}
                 
-                if confidence >= 0.70:
-                    # 🚀 Winner Concentration Mode
-                    # Allocate 30% of Equity DIRECTLY (High Risk, High Reward)
-                    target_exposure = 0.30
-                    invest_amount = current_equity * target_exposure
-                    buy_amount = int(invest_amount / current_price)
-                else:
-                    # 🛡️ Risk Managed Mode
-                    multiplier = confidence * 2.0
-                    dynamic_risk = self.risk_pct * multiplier
-                    dynamic_risk = max(0.01, min(dynamic_risk, 0.30))
+                for ticker, df in etf_data.items():
+                    score, details = self.strategy.calculate_quality_score(ticker, df, current_date)
+                    scores[ticker] = score
+                    score_details_map[ticker] = details
+                
+                # 4-2. 최적 ETF 선택
+                best_ticker = self.strategy.select_best_etf(scores)
+                
+                if best_ticker:
+                    best_score = scores[best_ticker]
+                    best_name = self.strategy.ETF_POOL[best_ticker]
                     
-                    risk_amount = current_equity * dynamic_risk
-                    risk_per_share = 2 * atr 
-                    buy_amount = int(risk_amount / risk_per_share)
-
-                max_buyable = int(cash / current_price)
-                buy_amount = min(buy_amount, max_buyable)
-
-                if buy_amount > 0:
-                    shares = buy_amount
-                    cash -= shares * current_price
-                    self.avg_price = current_price # 첫 진입 평단가
+                    # 4-3. 진입가 계산
+                    df = etf_data[best_ticker]
+                    entry_price = self.strategy.calculate_entry_price(df, current_date)
                     
-                    units = 1
-                    last_entry_price = current_price
-                    # stop_loss_price: 전략이 알아서 SELL 신호 주므로 여기선 명시적 관리 안 함 (단, 안전망 필요시 추가)
-                    
-                    df.at[curr_row.name, 'Action'] = 'BUY'
-
-            # === [C. 불타기 (Pyramiding)] ===
-            # 불도 상황 봐가며 (Max 6 Units)
-            elif shares > 0 and units < 6:
-                # 0.3 ATR 상승 시
-                threshold = 0.3 * atr
-                if current_price > last_entry_price + threshold: 
-                    # [Dynamic Sizing V2]
-                    confidence = getattr(self.strategy, 'current_score', 0.5)
-                    
-                    if confidence >= 0.70:
-                        # 🚀 Aggressive Pyramiding
-                        # Add 10% of Equity DIRECTLY
-                        invest_amount = current_equity * 0.10
-                        unit_size = int(invest_amount / current_price)
-                    else:
-                        # 🛡️ Risk Managed Pyramiding
-                        multiplier = confidence * 2.0
-                        dynamic_risk = self.risk_pct * multiplier
-                        dynamic_risk = max(0.01, min(dynamic_risk, 0.30))
+                    if entry_price:
+                        # 4-4. 진입 시그널 확인 (고가 돌파)
+                        entered = self.strategy.check_entry_signal(df, current_date, entry_price)
                         
-                        risk_amount = current_equity * dynamic_risk
-                        risk_per_share = 2 * atr
-                        unit_size = int(risk_amount / risk_per_share)
+                        if entered:
+                            # 거래 생성
+                            trade = Trade(
+                                ticker=best_ticker,
+                                ticker_name=best_name,
+                                entry_date=current_date,
+                                entry_price=entry_price,
+                                quality_score=best_score,
+                                score_details=score_details_map[best_ticker]
+                            )
+                            self.portfolio.open_position(trade)
+                            
+                            print(f"🔵 진입: {current_date.strftime('%Y-%m-%d')} | {best_name} | {entry_price:,.0f}원 | 점수: {best_score}")
+            
+            # 포지션이 열려있으면 청산 확인
+            if self.portfolio.current_position is not None:
+                # 익일로 이동
+                i += 1
+                if i >= len(backtest_dates):
+                    # 백테스트 종료일에 강제 청산
+                    exit_date = backtest_dates[i-1]
+                    df = etf_data[self.portfolio.current_position.ticker]
+                    exit_price = df.loc[exit_date, 'Close']
+                    self.portfolio.close_position(exit_price, exit_date)
                     
-                    max_buyable = int(cash / current_price)
-                    buy_amount = min(unit_size, max_buyable)
+                    pos_return = self.portfolio.closed_trades[-1].position_return
+                    print(f"🔴 청산(종료): {exit_date.strftime('%Y-%m-%d')} | {exit_price:,.0f}원 | {pos_return:+.2f}%")
+                    break
+                
+                exit_date = backtest_dates[i]
+                df = etf_data[self.portfolio.current_position.ticker]
+                
+                # 청산 시그널 확인
+                should_exit, exit_timing = self.strategy.check_exit_signal(
+                    df,
+                    self.portfolio.current_position.entry_date,
+                    exit_date
+                )
+                
+                if should_exit:
+                    exit_price = df.loc[exit_date, exit_timing.capitalize()]
+                    self.portfolio.close_position(exit_price, exit_date)
                     
-                    if buy_amount > 0:
-                        # 평단가 갱신 (가중 평균)
-                        total_cost = (shares * self.avg_price) + (buy_amount * current_price)
-                        shares += buy_amount
-                        cash -= buy_amount * current_price
-                        self.avg_price = total_cost / shares
-                        
-                        last_entry_price = current_price
-                        units += 1
-                        
-                        df.at[curr_row.name, 'Action'] = 'BUY'
-
-            total_asset = cash + (shares * current_price)
-            equity_curve.append(total_asset)
-
-        df['Equity_Strategy'] = equity_curve
-        return df
+                    pos_return = self.portfolio.closed_trades[-1].position_return
+                    print(f"🔴 청산({exit_timing}): {exit_date.strftime('%Y-%m-%d')} | {exit_price:,.0f}원 | {pos_return:+.2f}%")
+            
+            i += 1
+        
+        # 5. 결과 분석
+        metrics = self.portfolio.get_metrics()
+        
+        print("\n" + "="*80)
+        print("📊 백테스트 결과")
+        print("="*80)
+        print(f"초기 자본: {self.initial_capital:,.0f}원")
+        print(f"최종 자본: {metrics['final_capital']:,.0f}원")
+        print(f"총 수익률: {metrics['total_return']:.2f}%")
+        print(f"거래 횟수: {metrics['num_trades']}회")
+        print(f"승률: {metrics['win_rate']:.1f}%")
+        print(f"평균 수익률: {metrics['average_return']:.2f}%")
+        print(f"최대 낙폭(MDD): {metrics['max_drawdown']:.2f}%")
+        print("="*80 + "\n")
+        
+        # 6. ETF별 성과 분석
+        self._analyze_by_etf()
+        
+        return metrics
+    
+    def _analyze_by_etf(self):
+        """ETF별 성과 분석"""
+        if not self.portfolio.closed_trades:
+            return
+        
+        etf_stats = {}
+        for trade in self.portfolio.closed_trades:
+            ticker = trade.ticker
+            if ticker not in etf_stats:
+                etf_stats[ticker] = {
+                    'name': trade.ticker_name,
+                    'count': 0,
+                    'wins': 0,
+                    'returns': []
+                }
+            
+            etf_stats[ticker]['count'] += 1
+            if trade.is_winning:
+                etf_stats[ticker]['wins'] += 1
+            etf_stats[ticker]['returns'].append(trade.position_return)
+        
+        print("="*80)
+        print("📈 ETF별 성과")
+        print("="*80)
+        
+        for ticker, stats in sorted(etf_stats.items(), key=lambda x: x[1]['count'], reverse=True):
+            win_rate = stats['wins'] / stats['count'] * 100
+            avg_return = sum(stats['returns']) / len(stats['returns'])
+            print(f"{stats['name']:20s} | 거래: {stats['count']:2d}회 | 승률: {win_rate:5.1f}% | 평균: {avg_return:+6.2f}%")
+        
+        print("="*80 + "\n")

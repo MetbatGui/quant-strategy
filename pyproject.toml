@@ -21,6 +21,9 @@ dependencies = [
     "yfinance>=1.0",
 ]
 
+[project.scripts]
+quant = "quant_strategy.presentation.cli.main:main"
+
 # [추가됨] 빌드 시스템 정의 (setuptools 사용 시 필수)
 [build-system]
 requires = ["setuptools>=61.0"]
