@@ -28,9 +28,9 @@ class EtfQualityStrategy:
         "091160.KS": "KODEX 반도체",
         "091170.KS": "KODEX 금융",
         "091180.KS": "KODEX 자동차",
-        "229200.KS": "KODEX 코스닥150",
         "305720.KS": "KODEX 2차전지K-뉴딜",
-        "261140.KS": "KODEX 바이오",
+        "117680.KS": "KODEX 철강",
+        "266390.KS": "KODEX 미디어&엔터",
     }
     
     QUALITY_THRESHOLD = 60  # 최소 품질 점수

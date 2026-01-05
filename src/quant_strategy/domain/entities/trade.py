@@ -23,12 +23,21 @@ class Trade:
         if self.score_details is None:
             self.score_details = {}
     
+    # 거래 수수료 (0.015%)
+    FEE_RATE = 0.00015
+    
     @property
     def position_return(self) -> Optional[float]:
-        """포지션 수익률 (%)"""
+        """포지션 수익률 (%) - 수수료 반영"""
         if self.exit_price is None:
             return None
-        return (self.exit_price / self.entry_price - 1) * 100
+            
+        # 매수 금액: Entry * (1 + fee)
+        # 매도 금액: Exit * (1 - fee)
+        buy_value = self.entry_price * (1 + self.FEE_RATE)
+        sell_value = self.exit_price * (1 - self.FEE_RATE)
+        
+        return (sell_value / buy_value - 1) * 100
     
     @property
     def is_open(self) -> bool:
