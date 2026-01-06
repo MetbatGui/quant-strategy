@@ -37,7 +37,15 @@ class SignalService:
         print()
         
         # 1. 데이터 로드 (충분한 기간)
-        start_date = (target_dt - timedelta(days=365)).strftime('%Y-%m-%d')
+        config_start_date = self.strategy.config.get('strategy', {}).get('train_start_date')
+        
+        if config_start_date:
+            start_date = config_start_date
+            print(f"⚙️ 학습 시작일 설정 (Config): {start_date} (Expanding Window)")
+        else:
+            start_date = (target_dt - timedelta(days=365)).strftime('%Y-%m-%d')
+            print(f"⚙️ 학습 시작일 설정 (Default): {start_date} (Rolling Window 365d)")
+            
         end_date = (target_dt + timedelta(days=1)).strftime('%Y-%m-%d')
         
         etf_data = {}

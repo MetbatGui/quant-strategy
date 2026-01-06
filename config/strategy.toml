@@ -1,7 +1,8 @@
 [strategy]
 quality_threshold = 60
 k = 0.02
-exit_strategy = "always_open" # Options: "always_open", "dynamic"
+exit_strategy = "always_open"
+train_start_date = "2024-12-01" # Options: "always_open", "dynamic"
 
 [etf_pool]
 # "069500.KS" = "KODEX 200" (Removed for low performance)
