@@ -195,7 +195,7 @@ class SignalService:
         print(f"   1. 장 시작 시 1순위({self.strategy.ETF_POOL[top_tickers[0]]}) 자동감시주문 설정")
         print(f"   2. 진입가 도달 시 자동 체결")
         print(f"   3. 나머지는 무시 (집중 투자)")
-        print(f"   4. 청산 규칙은 기존과 동일 (갭상승 홀딩, 갭하락 시가청산)")
+        print(f"   4. 청산 규칙: 시가에 전량 매도 (Gap 여부 무관, 당일 재진입 가능)")
         print()
         print("=" * 80)
         

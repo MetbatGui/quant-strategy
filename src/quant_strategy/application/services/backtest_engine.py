@@ -94,10 +94,24 @@ class BacktestEngine:
             print("❌ 데이터가 없습니다.")
             return {}
         
-        # 2. 모델 학습
-        print("\n🤖 XGBoost 모델 학습 중...")
-        self.strategy.train_models(etf_data)
-        print(f"  ✅ {len(self.strategy.models)}개 모델 학습 완료")
+        # 2. 모델 학습 (Strict Separation)
+        print("\n🤖 XGBoost 모델 학습 중... (Strict Separation applied)")
+        
+        # 학습용 데이터 슬라이싱 (Start Date 이전 데이터만 사용)
+        start_dt = pd.to_datetime(start_date)
+        train_data = {}
+        for ticker, df in etf_data.items():
+            # 미래 데이터(Start Date 이후)는 학습에서 제외
+            train_df = df[df.index < start_dt].copy()
+            if not train_df.empty:
+                train_data[ticker] = train_df
+        
+        if not train_data:
+            print("❌ 학습할 과거 데이터가 부족합니다.")
+            return {}
+            
+        self.strategy.train_models(train_data)
+        print(f"  ✅ {len(self.strategy.models)}개 모델 학습 완료 (학습 종료일: {max([df.index[-1] for df in train_data.values()]).strftime('%Y-%m-%d')})")
         
         # 3. 거래일 생성 (첫 번째 ETF 기준)
         first_ticker = list(etf_data.keys())[0]
@@ -110,11 +124,43 @@ class BacktestEngine:
         print("="*80 + "\n")
         
         # 4. 백테스트 루프
-        i = 0
-        while i < len(backtest_dates):
-            current_date = backtest_dates[i]
+        for i, current_date in enumerate(backtest_dates):
+            # 1. 기존 포지션 관리 (청산)
+            just_closed_at_open = False
             
-            # 포지션이 없을 때만 새로운 진입 시도
+            if self.portfolio.current_position is not None:
+                # 당일 진입한 포지션은 청산 대상 아님 (Overnight 전략)
+                if self.portfolio.current_position.entry_date < current_date:
+                    df = etf_data[self.portfolio.current_position.ticker]
+                    
+                    # 청산 시그널 확인
+                    should_exit, exit_timing = self.strategy.check_exit_signal(
+                        df,
+                        self.portfolio.current_position.entry_date,
+                        current_date
+                    )
+                    
+                    if should_exit:
+                        if exit_timing == 'OPEN':
+                            # 시가 청산 -> 당일 재진입 기회 있음
+                            exit_price = df.loc[current_date, 'Open']
+                            self.portfolio.close_position(exit_price, current_date)
+                            pos_return = self.portfolio.closed_trades[-1].position_return
+                            print(f"🔴 청산(OPEN): {current_date.strftime('%Y-%m-%d')} | {exit_price:,.0f}원 | {pos_return:+.2f}%")
+                            just_closed_at_open = True
+                            
+                        elif exit_timing == 'CLOSE':
+                            # 종가 청산 -> 당일 거래 종료
+                            exit_price = df.loc[current_date, 'Close']
+                            self.portfolio.close_position(exit_price, current_date)
+                            pos_return = self.portfolio.closed_trades[-1].position_return
+                            print(f"🔴 청산(CLOSE): {current_date.strftime('%Y-%m-%d')} | {exit_price:,.0f}원 | {pos_return:+.2f}%")
+                            continue # 하루 종료
+                    else:
+                        # 홀딩 -> 당일 거래 종료
+                        continue
+
+            # 2. 신규 진입 (포지션이 없거나, 방금 시가 청산한 경우)
             if self.portfolio.current_position is None:
                 # 4-1. 품질 점수 계산
                 scores = {}
@@ -142,7 +188,7 @@ class BacktestEngine:
                         entered = self.strategy.check_entry_signal(df, current_date, entry_price)
                         
                         if entered:
-                            # 거래 생성 (첫 번째로 걸린 종목 매수 후 루프 종료)
+                            # 거래 생성
                             trade = Trade(
                                 ticker=ticker,
                                 ticker_name=name,
@@ -153,42 +199,17 @@ class BacktestEngine:
                             )
                             self.portfolio.open_position(trade)
                             
-                            print(f"🔵 진입: {current_date.strftime('%Y-%m-%d')} | {name} | {entry_price:,.0f}원 | 점수: {score}")
-                            break  # 1일 1종목 진입 원칙
-            
-            # 포지션이 열려있으면 청산 확인
-            if self.portfolio.current_position is not None:
-                # 익일로 이동
-                i += 1
-                if i >= len(backtest_dates):
-                    # 백테스트 종료일에 강제 청산
-                    exit_date = backtest_dates[i-1]
-                    df = etf_data[self.portfolio.current_position.ticker]
-                    exit_price = df.loc[exit_date, 'Close']
-                    self.portfolio.close_position(exit_price, exit_date)
-                    
-                    pos_return = self.portfolio.closed_trades[-1].position_return
-                    print(f"🔴 청산(종료): {exit_date.strftime('%Y-%m-%d')} | {exit_price:,.0f}원 | {pos_return:+.2f}%")
-                    break
-                
-                exit_date = backtest_dates[i]
-                df = etf_data[self.portfolio.current_position.ticker]
-                
-                # 청산 시그널 확인
-                should_exit, exit_timing = self.strategy.check_exit_signal(
-                    df,
-                    self.portfolio.current_position.entry_date,
-                    exit_date
-                )
-                
-                if should_exit:
-                    exit_price = df.loc[exit_date, exit_timing.capitalize()]
-                    self.portfolio.close_position(exit_price, exit_date)
-                    
-                    pos_return = self.portfolio.closed_trades[-1].position_return
-                    print(f"🔴 청산({exit_timing}): {exit_date.strftime('%Y-%m-%d')} | {exit_price:,.0f}원 | {pos_return:+.2f}%")
-            
-            i += 1
+                            re_entry_tag = " (재진입)" if just_closed_at_open else ""
+                            print(f"🔵 진입{re_entry_tag}: {current_date.strftime('%Y-%m-%d')} | {name} | {entry_price:,.0f}원 | 점수: {score}")
+                            break  # 1일 1종목 원칙
+
+        # 루프 종료 후 남은 포지션 강제 청산
+        if self.portfolio.current_position is not None:
+             final_date = backtest_dates[-1]
+             df = etf_data[self.portfolio.current_position.ticker]
+             close_price = df.loc[final_date, 'Close']
+             self.portfolio.close_position(close_price, final_date)
+             print(f"🔴 청산(종료): {final_date.strftime('%Y-%m-%d')} | {close_price:,.0f}원 | 강제 청산")
         
         # 5. 결과 분석
         metrics = self.portfolio.get_metrics()
