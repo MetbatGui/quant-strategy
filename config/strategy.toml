@@ -1,6 +1,6 @@
 [strategy]
 quality_threshold = 60
-k = 0.03
+k = 0.02
 exit_strategy = "always_open" # Options: "always_open", "dynamic"
 
 [etf_pool]
@@ -14,4 +14,5 @@ exit_strategy = "always_open" # Options: "always_open", "dynamic"
 "102960.KS" = "KODEX 기계장비"
 # "132030.KS" = "KODEX 골드선물(H)"
 # "152380.KS" = "KODEX 국채선물10년"
-# "305720.KS" = "KODEX 2차전지산업"
+"305720.KS" = "KODEX 2차전지산업"
+"102970.KS" = "KODEX 증권"

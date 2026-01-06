@@ -133,23 +133,41 @@ class SignalService:
             name = self.strategy.ETF_POOL[ticker]
             latest_price_data = latest_prices[ticker]
             
-            # 전일 변동폭 계산
-            df = etf_data[ticker]
-            latest_idx = df.index.get_loc(latest_date)
+            # 전일 변동폭 계산 Logic Fix
+            # Case A: 예측일(target_dt) > 최신데이터(latest_date) -> 내일 시그널 생성 중
+            #         이 경우 '전일'은 latest_date(오늘)임.
+            # Case B: 예측일(target_dt) == 최신데이터(latest_date) -> 오늘 시그널(장중/장후) 생성 중
+            #         이 경우 '전일'은 latest_date의 전날(yesterday)임.
             
-            if latest_idx > 0:
-                prev_data = df.iloc[latest_idx - 1]
-                prev_range = prev_data['High'] - prev_data['Low']
-            else:
+            if target_dt > latest_date:
+                # Case A: Use Latest Date's Range
                 prev_range = latest_price_data['High'] - latest_price_data['Low']
+                # 기준 종가도 최신 데이터 종가 사용
+                base_close = latest_price_data['Close']
+            else:
+                # Case B: Use Previous Day's Range
+                df = etf_data[ticker]
+                latest_idx = df.index.get_loc(latest_date)
+                
+                if latest_idx > 0:
+                    prev_data = df.iloc[latest_idx - 1]
+                    prev_range = prev_data['High'] - prev_data['Low']
+                    base_close = prev_data['Close'] # 어제 종가 기준? 
+                    # 아니요, 진입가는 "Target Day Open" + k*Range.
+                    # Target Day Open을 모를 때 "Target Day Ref Close"를 씀.
+                    # 만약 오늘(target) 시그널이면, 어제(prev) 종가를 보여주는게 맞음.
+                else:
+                    # 데이터가 하루밖에 없으면...
+                    prev_range = latest_price_data['High'] - latest_price_data['Low']
+                    base_close = latest_price_data['Close']
             
             # 예상 진입가
-            reference_entry = latest_price_data['Close'] + (prev_range * self.strategy.k)
+            reference_entry = base_close + (prev_range * self.strategy.k)
             reference_entry = round(reference_entry / 5) * 5
             
             print(f"[{rank}순위] {name} ({ticker})")
             print(f"   품질 점수: {score}점")
-            print(f"   기준 종가: {latest_price_data['Close']:,.0f}원")
+            print(f"   기준 종가: {base_close:,.0f}원")
             print(f"   전일 변동폭: {prev_range:,.0f}원")
             print(f"   예상 진입가: {reference_entry:,.0f}원 (시가 + {prev_range * self.strategy.k:,.0f}원)")
             print("-" * 40)
