@@ -132,3 +132,134 @@ def has_sufficient_volume(volume_ratio: float, threshold: float = 1.2) -> bool:
     if pd.isna(volume_ratio):
         return False
     return volume_ratio >= threshold
+
+
+def calculate_stochastic(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14, smooth_k: int = 3) -> pd.DataFrame:
+    """
+    Stochastic Oscillator 계산
+    
+    Args:
+        high: 고가
+        low: 저가
+        close: 종가
+        period: 기간 (기본 14)
+        smooth_k: %K 스무딩 (기본 3)
+    
+    Returns:
+        DataFrame with 'k', 'd' columns
+    """
+    # Fast %K
+    lowest_low = low.rolling(window=period).min()
+    highest_high = high.rolling(window=period).max()
+    
+    fast_k = ((close - lowest_low) / (highest_high - lowest_low)) * 100
+    
+    # Slow %K (Fast %D)
+    stoch_k = fast_k.rolling(window=smooth_k).mean()
+    
+    # Slow %D
+    stoch_d = stoch_k.rolling(window=smooth_k).mean()
+    
+    return pd.DataFrame({'k': stoch_k, 'd': stoch_d})
+
+
+def calculate_bollinger_bands(close: pd.Series, period: int = 20, std_dev: float = 2.0) -> pd.DataFrame:
+    """
+    Bollinger Bands 계산
+    
+    Args:
+        close: 종가
+        period: 이동평균 기간 (기본 20)
+        std_dev: 표준편차 승수 (기본 2.0)
+    
+    Returns:
+        DataFrame with 'upper', 'middle', 'lower', 'width', 'percent_b'
+    """
+    middle = close.rolling(window=period).mean()
+    std = close.rolling(window=period).std()
+    
+    upper = middle + (std * std_dev)
+    lower = middle - (std * std_dev)
+    
+    # Band Width (변동성 지표)
+    width = (upper - lower) / middle
+    
+    # %B (밴드 내 위치)
+    percent_b = (close - lower) / (upper - lower)
+    
+    return pd.DataFrame({
+        'upper': upper,
+        'middle': middle,
+        'lower': lower,
+        'width': width,
+        'percent_b': percent_b
+    })
+
+def calculate_macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
+    """
+    MACD (Moving Average Convergence Divergence) 계산
+    
+    Args:
+        close: 종가 시리즈
+        fast: 단기 EMA 기간 (기본 12)
+        slow: 장기 EMA 기간 (기본 26)
+        signal: 시그널 EMA 기간 (기본 9)
+    
+    Returns:
+        DataFrame with 'macd', 'signal', 'hist'
+    """
+    ema_fast = close.ewm(span=fast, adjust=False).mean()
+    ema_slow = close.ewm(span=slow, adjust=False).mean()
+    
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+    hist = macd_line - signal_line
+    
+    return pd.DataFrame({
+        'macd': macd_line,
+        'signal': signal_line,
+        'hist': hist
+    })
+
+
+def calculate_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """
+    ADX (Average Directional Index) 계산
+    
+    Args:
+        df: OHLC 데이터프레임
+        period: 기간 (기본 14)
+    
+    Returns:
+        ADX 값 시리즈
+    """
+    high = df['High']
+    low = df['Low']
+    close = df['Close']
+    
+    plus_dm = high.diff()
+    minus_dm = low.diff()
+    
+    plus_dm = plus_dm.where((plus_dm > 0) & (plus_dm > minus_dm.abs()), 0.0)
+    minus_dm = minus_dm.where((minus_dm < 0) & (minus_dm.abs() > plus_dm), 0.0).abs()
+    
+    tr = calculate_atr(df, period=1) # TR for 1 period
+    
+    atr_smooth = tr.rolling(window=period).sum() # Initial smoothing
+    # Wilders smoothing for better accuracy matching standard libraries could be complex, 
+    # but rolling sum/mean is often sufficient for ML features. 
+    # Let's use simple rolling sum for DM and TR as approximation or EWMA.
+    # Standard ADX uses Wilder's Smoothing.
+    
+    # Using specific Wilder's smoothing logic:
+    # Smooth(t) = Smooth(t-1) - (Smooth(t-1)/n) + Current(t)
+    # This is equivalent to EWM with com=period-1
+    
+    tr_smooth = tr.ewm(alpha=1/period, adjust=False).mean()
+    plus_di = 100 * (plus_dm.ewm(alpha=1/period, adjust=False).mean() / tr_smooth)
+    minus_di = 100 * (minus_dm.ewm(alpha=1/period, adjust=False).mean() / tr_smooth)
+    
+    dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+    adx = dx.ewm(alpha=1/period, adjust=False).mean()
+    
+    return adx

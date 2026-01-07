@@ -7,7 +7,15 @@ import pandas as pd
 import numpy as np
 import xgboost as xgb
 from sklearn.model_selection import train_test_split
-from quant_strategy.domain.indicators.technical import calculate_atr, calculate_rsi, calculate_volume_ratio
+from quant_strategy.domain.indicators.technical import (
+    calculate_atr, 
+    calculate_rsi, 
+    calculate_volume_ratio,
+    calculate_stochastic,
+    calculate_bollinger_bands,
+    calculate_macd,
+    calculate_adx
+)
 
 
 def create_features(df: pd.DataFrame, lookback: int = 5) -> pd.DataFrame:
@@ -61,6 +69,24 @@ def create_features(df: pd.DataFrame, lookback: int = 5) -> pd.DataFrame:
     features['ma20'] = df['Close'].rolling(20).mean()
     features['price_to_ma5'] = (df['Close'] / features['ma5'] - 1) * 100
     features['price_to_ma20'] = (df['Close'] / features['ma20'] - 1) * 100
+    
+    # 8. 스토캐스틱 (과열/침체)
+    stoch = calculate_stochastic(df['High'], df['Low'], df['Close'], period=14)
+    features['stoch_k'] = stoch['k']
+    features['stoch_d'] = stoch['d']
+    
+    # 9. 볼린저 밴드 (변동성/위치)
+    bb = calculate_bollinger_bands(df['Close'], period=20, std_dev=2.0)
+    features['bb_width'] = bb['width']
+    features['bb_percent'] = bb['percent_b']
+    features['bb_breakout'] = (df['Close'] > bb['upper']).astype(int)
+    
+    
+    # 12. 중장기 모멘텀 & 추세
+    features['return_10d'] = df['Close'].pct_change(10) * 100
+    features['return_20d'] = df['Close'].pct_change(20) * 100
+    features['ma60'] = df['Close'].rolling(60).mean()
+    features['price_to_ma60'] = (df['Close'] / features['ma60'] - 1) * 100
     
     return features.dropna()
 

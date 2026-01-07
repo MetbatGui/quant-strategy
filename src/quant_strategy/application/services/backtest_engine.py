@@ -70,7 +70,7 @@ class BacktestEngine:
         
         return etf_data
     
-    def run(self, start_date: str, end_date: str, train_start: str = None) -> BacktestResult:
+    def run(self, start_date: str, end_date: str, train_start: str = None, trade_on_last_day: bool = True) -> BacktestResult:
         """
         백테스트 실행
         
@@ -209,6 +209,10 @@ class BacktestEngine:
                         continue
 
             # 2. 신규 진입 (포지션이 없거나, 방금 시가 청산한 경우)
+            # 마지막 거래일이고 trade_on_last_day가 False면 진입 생략
+            if not trade_on_last_day and current_date == backtest_dates[-1]:
+                continue
+
             if self.portfolio.current_position is None:
                 # 4-1. 품질 점수 계산
                 # IMPORTANT: 점수는 '전일' 데이터 기준으로 계산해야 함 (Lookahead Bias 방지)

@@ -11,7 +11,12 @@ def backtest_command(start: str = "2024-01-01", end: str = "2025-01-01", train_s
     strategy = EtfQualityStrategy()
     engine = BacktestEngine(strategy, initial_capital=10_000_000)
     
-    result = engine.run(start, end, train_start)
+    # If end date is 2026-01-05, disable last day trading (User Request)
+    trade_on_last_day = True
+    if end == "2026-01-05":
+        trade_on_last_day = False
+        
+    result = engine.run(start, end, train_start, trade_on_last_day=trade_on_last_day)
     
     # Save Report
     if result and hasattr(result, 'save'):
@@ -59,23 +64,24 @@ def main():
         from datetime import datetime, timedelta
         
         # Default: Last 2 months
-        end_dt = datetime.now()
-        start_dt = end_dt - timedelta(days=60)
+        # Default: User requested specific range (Nov 1 ~ Jan 7)
+        # end_dt = datetime.now()
+        # start_dt = end_dt - timedelta(days=60)
         
-        start = start_dt.strftime("%Y-%m-%d")
-        end = end_dt.strftime("%Y-%m-%d")
+        start = "2025-11-01"
+        end = "2026-01-05"
         train_start = None
         view = False
         
-        for i, arg in enumerate(sys.argv[2:]):
-            if arg == "--start" and i + 3 < len(sys.argv):
-                start = sys.argv[i + 3]
-            elif arg == "--end" and i + 3 < len(sys.argv):
-                end = sys.argv[i + 3]
-            elif arg == "--train-start" and i + 3 < len(sys.argv):
-                train_start = sys.argv[i + 3]
-            elif arg == "--view":
-                view = True
+        for i, arg in enumerate(sys.argv):
+             if arg == "--start" and i + 1 < len(sys.argv):
+                 start = sys.argv[i + 1]
+             elif arg == "--end" and i + 1 < len(sys.argv):
+                 end = sys.argv[i + 1]
+             elif arg == "--train-start" and i + 1 < len(sys.argv):
+                 train_start = sys.argv[i + 1]
+             elif arg == "--view":
+                 view = True
         
         backtest_command(start, end, train_start, view)
     
