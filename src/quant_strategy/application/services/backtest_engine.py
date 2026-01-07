@@ -9,6 +9,7 @@ from typing import Dict, List
 from quant_strategy.domain.strategies.etf_quality_strategy import EtfQualityStrategy
 from quant_strategy.domain.entities.trade import Trade
 from quant_strategy.domain.entities.portfolio import Portfolio
+from quant_strategy.domain.entities.backtest_result import BacktestResult
 
 
 class BacktestEngine:
@@ -69,7 +70,7 @@ class BacktestEngine:
         
         return etf_data
     
-    def run(self, start_date: str, end_date: str, train_start: str = None) -> Dict:
+    def run(self, start_date: str, end_date: str, train_start: str = None) -> BacktestResult:
         """
         백테스트 실행
         
@@ -79,7 +80,7 @@ class BacktestEngine:
             train_start: 모델 학습 시작일 (Optional)
         
         Returns:
-            백테스트 결과 딕셔너리
+            BacktestResult 객체
         """
         print("\n" + "="*80)
         print(f"🚀 백테스트 시작: {start_date} ~ {end_date}")
@@ -92,7 +93,14 @@ class BacktestEngine:
         
         if not etf_data:
             print("❌ 데이터가 없습니다.")
-            return {}
+            return BacktestResult(
+                strategy_name="EtfQualityStrategy",
+                start_date=start_date,
+                end_date=end_date,
+                initial_capital=self.initial_capital,
+                final_capital=self.portfolio.capital,
+                total_return=0.0
+            )
         
         # 2. 모델 학습 (Strict Separation)
         print("\n🤖 XGBoost 모델 학습 중... (Strict Separation applied)")
@@ -108,7 +116,14 @@ class BacktestEngine:
         
         if not train_data:
             print("❌ 학습할 과거 데이터가 부족합니다.")
-            return {}
+            return BacktestResult(
+                strategy_name="EtfQualityStrategy",
+                start_date=start_date,
+                end_date=end_date,
+                initial_capital=self.initial_capital,
+                final_capital=self.portfolio.capital,
+                total_return=0.0
+            )
             
         self.strategy.train_models(train_data)
         print(f"  ✅ {len(self.strategy.models)}개 모델 학습 완료 (학습 종료일: {max([df.index[-1] for df in train_data.values()]).strftime('%Y-%m-%d')})")
@@ -146,6 +161,39 @@ class BacktestEngine:
                             exit_price = df.loc[current_date, 'Open']
                             self.portfolio.close_position(exit_price, current_date)
                             pos_return = self.portfolio.closed_trades[-1].position_return
+                            
+                            # --- [벤치마크: 최적의 대안 찾기] ---
+                            best_ticker = None
+                            best_return = -999.0
+                            closed_trade = self.portfolio.closed_trades[-1]
+                            entry_dt = closed_trade.entry_date
+                            
+                            for other_ticker in self.strategy.ETF_POOL.keys():
+                                if other_ticker == closed_trade.ticker: continue
+                                try:
+                                    odf = etf_data[other_ticker]
+                                    e_price = self.strategy.calculate_entry_price(odf, entry_dt)
+                                    if e_price and self.strategy.check_entry_signal(odf, entry_dt, e_price):
+                                        if current_date in odf.index:
+                                            x_price = odf.loc[current_date, 'Open']
+                                            
+                                            # 수수료 반영 (0.015%)
+                                            fee = 0.00015
+                                            buy_v = e_price * (1+fee)
+                                            sell_v = x_price * (1-fee)
+                                            ret = (sell_v/buy_v - 1)*100
+                                            
+                                            if ret > best_return:
+                                                best_return = ret
+                                                best_ticker = other_ticker
+                                except: pass
+                                
+                            if best_ticker:
+                                closed_trade.best_alternative_ticker = best_ticker
+                                closed_trade.best_alternative_name = self.strategy.ETF_POOL[best_ticker]
+                                closed_trade.best_alternative_return = best_return
+                            # -------------------------------
+
                             print(f"🔴 청산(OPEN): {current_date.strftime('%Y-%m-%d')} | {exit_price:,.0f}원 | {pos_return:+.2f}%")
                             just_closed_at_open = True
                             
@@ -163,13 +211,27 @@ class BacktestEngine:
             # 2. 신규 진입 (포지션이 없거나, 방금 시가 청산한 경우)
             if self.portfolio.current_position is None:
                 # 4-1. 품질 점수 계산
+                # IMPORTANT: 점수는 '전일' 데이터 기준으로 계산해야 함 (Lookahead Bias 방지)
+                if i > 0:
+                    prev_date = backtest_dates[i-1]
+                else:
+                    curr_idx = all_dates.get_loc(current_date)
+                    if curr_idx > 0:
+                        prev_date = all_dates[curr_idx - 1]
+                    else:
+                        continue 
+
                 scores = {}
                 score_details_map = {}
                 
                 for ticker, df in etf_data.items():
-                    score, details = self.strategy.calculate_quality_score(ticker, df, current_date)
-                    scores[ticker] = score
-                    score_details_map[ticker] = details
+                    if prev_date in df.index:
+                        score, details = self.strategy.calculate_quality_score(ticker, df, prev_date)
+                        scores[ticker] = score
+                        score_details_map[ticker] = details
+                    else:
+                        scores[ticker] = 0
+                        score_details_map[ticker] = {'Error': 'No Data'}
                 
                 # 4-2. 상위 N개 ETF 선택
                 top_tickers = self.strategy.select_top_etfs(scores, n=self.top_n)
@@ -229,7 +291,19 @@ class BacktestEngine:
         # 6. ETF별 성과 분석
         self._analyze_by_etf()
         
-        return metrics
+        return BacktestResult(
+            strategy_name=self.strategy.__class__.__name__,
+            start_date=start_date,
+            end_date=end_date,
+            initial_capital=self.initial_capital,
+            final_capital=metrics['final_capital'],
+            total_return=metrics['total_return'],
+            win_rate=metrics['win_rate'],
+            num_trades=metrics['num_trades'],
+            max_drawdown=metrics['max_drawdown'],
+            average_return=metrics['average_return'],
+            trades=self.portfolio.closed_trades
+        )
     
     def _analyze_by_etf(self):
         """ETF별 성과 분석"""
