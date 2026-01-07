@@ -19,6 +19,11 @@ class Trade:
     quality_score: int = 0
     score_details: dict = None
     
+    # Context & Benchmark (New)
+    best_alternative_ticker: Optional[str] = None
+    best_alternative_return: Optional[float] = None
+    best_alternative_name: Optional[str] = None
+    
     def __post_init__(self):
         if self.score_details is None:
             self.score_details = {}
