@@ -88,6 +88,19 @@ def create_features(df: pd.DataFrame, lookback: int = 5) -> pd.DataFrame:
     features['ma60'] = df['Close'].rolling(60).mean()
     features['price_to_ma60'] = (df['Close'] / features['ma60'] - 1) * 100
     
+    # 13. 추세 지표 (MACD/ADX)
+    macd = calculate_macd(df['Close'])
+    features['macd'] = macd['macd']
+    features['macd_signal'] = macd['signal']
+    features['macd_hist'] = macd['hist']
+    
+    features['adx'] = calculate_adx(df)
+    
+    # 14. Interaction Features (추세 * 모멘텀)
+    # 추세 강도가 높을 때 모멘텀의 영향력을 증폭
+    features['trend_momentum'] = features['adx'] * features['rsi'] / 100
+    
+    
     return features.dropna()
 
 
@@ -159,13 +172,16 @@ def train_xgboost_model(df: pd.DataFrame, test_size: float = 0.2, entry_k: float
     )
     
     # XGBoost 파라미터
+    # XGBoost 파라미터
     params = {
         'objective': 'reg:squarederror',
-        'max_depth': 3,
+        'max_depth': 4,
         'learning_rate': 0.05,
-        'n_estimators': 50,
+        'n_estimators': 100,
         'subsample': 0.8,
         'colsample_bytree': 0.8,
+        'gamma': 0.1, # Regularization
+        'min_child_weight': 5, # Regularization against noise
         'random_state': 42
     }
     

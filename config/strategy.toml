@@ -5,15 +5,15 @@ exit_strategy = "always_open"
 train_start_date = "2024-12-01" # Options: "always_open", "dynamic"
 
 [etf_pool]
-"069500.KS" = "KODEX 200"
+# "069500.KS" = "KODEX 200"
 "091160.KS" = "KODEX 반도체"
-# "140700.KS" = "KODEX 금융"
-# "244580.KS" = "KODEX 바이오" (Removed for low win rate)
+"140700.KS" = "KODEX 금융"
+# "244580.KS" = "KODEX 바이오"
 "091180.KS" = "KODEX 자동차"
-# "117680.KS" = "KODEX 철강" (Removed for risk-reward imbalance)
-"266390.KS" = "KODEX 미디어&엔터"
-# "102960.KS" = "KODEX 기계장비"
-# "132030.KS" = "KODEX 골드선물(H)"
+"117680.KS" = "KODEX 철강"
+# "266390.KS" = "KODEX 미디어&엔터"
+# "117700.KS" = "KODEX 건설"
+"132030.KS" = "KODEX 골드선물(H)"
 # "152380.KS" = "KODEX 국채선물10년"
 "305720.KS" = "KODEX 2차전지산업"
-# "102970.KS" = "KODEX 증권" (Removed for low win rate)
+# "102970.KS" = "KODEX 증권"
