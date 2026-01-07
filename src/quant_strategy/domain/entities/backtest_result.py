@@ -146,11 +146,11 @@ class BacktestResult:
         # (Ideal would be daily mark-to-market, but this suffices for trade analysis)
         
         fig = make_subplots(
-            rows=2, cols=1, 
+            rows=3, cols=1, 
             shared_xaxes=True, 
-            vertical_spacing=0.1,
-            subplot_titles=('Cumulative Return (%)', 'Drawdown (%)'),
-            row_heights=[0.7, 0.3]
+            vertical_spacing=0.05,
+            subplot_titles=('Cumulative Return (%)', 'Drawdown (%)', 'Trade Return (%)'),
+            row_heights=[0.5, 0.25, 0.25]
         )
         
         # Calculate cumulative returns properly
@@ -197,12 +197,24 @@ class BacktestResult:
             fill='tozeroy', fillcolor='rgba(255,0,0,0.2)'
         ), row=2, col=1)
         
+        # 3. Trade Returns Bar Chart
+        colors = ['green' if val >= 0 else 'red' for val in trade_df['position_return']]
+        
+        fig.add_trace(go.Bar(
+            x=trade_df['exit_date'], 
+            y=trade_df['position_return'],
+            name='Trade PnL',
+            marker_color=colors,
+            customdata=trade_df[['ticker_name', 'quality_score']].values,
+            hovertemplate='%{x}<br>%{customdata[0]}<br>Return: %{y:.2f}%<br>Score: %{customdata[1]}<extra></extra>'
+        ), row=3, col=1)
+        
         # Update Layout
         fig.update_layout(
             title=f"<b>Strategy Performance Report: {self.strategy_name}</b><br>" + 
                   f"Total Return: {self.total_return:.2f}% | Win Rate: {self.win_rate:.1f}% | MDD: {self.max_drawdown:.2f}%",
             template="plotly_white",
-            height=800,
+            height=1000,
             showlegend=True
         )
         
