@@ -97,13 +97,19 @@ class BacktestResult:
                         f"{t.best_alternative_return:.2f}" if t.best_alternative_return is not None else ''
                     ])
                     
-        print(f"💾 Report saved to {output_dir}/")
-        
         # 3. HTML Report (Plotly)
+        html_path = path / f"backtest_report_{timestamp}.html"
         try:
-            self._generate_html_report(path / f"backtest_report_{timestamp}.html")
+            self._generate_html_report(html_path)
         except Exception as e:
             print(f"❌ Failed to generate HTML report: {e}")
+            html_path = None
+            
+        return {
+            'summary': summary_file,
+            'trades': trades_file,
+            'html': html_path
+        }
 
     def _generate_html_report(self, output_path: Path):
         """Generate interactive HTML report using Plotly"""

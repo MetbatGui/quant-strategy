@@ -2,10 +2,11 @@
 퀀트 전략 CLI
 """
 
-def backtest_command(start: str = "2024-01-01", end: str = "2025-01-01", train_start: str = None):
+def backtest_command(start: str = "2024-01-01", end: str = "2025-01-01", train_start: str = None, view: bool = False):
     """백테스트 실행"""
     from quant_strategy.domain.strategies.etf_quality_strategy import EtfQualityStrategy
     from quant_strategy.application.services.backtest_engine import BacktestEngine
+    import webbrowser
     
     strategy = EtfQualityStrategy()
     engine = BacktestEngine(strategy, initial_capital=10_000_000)
@@ -14,7 +15,10 @@ def backtest_command(start: str = "2024-01-01", end: str = "2025-01-01", train_s
     
     # Save Report
     if result and hasattr(result, 'save'):
-        result.save()
+        files = result.save()
+        if view and files.get('html'):
+            print(f"🌍 Opening report: {files['html']}")
+            webbrowser.open(str(files['html']))
         
     return result
 
@@ -40,11 +44,11 @@ def main():
         print("Usage: quant [command] [options]")
         print()
         print("Commands:")
-        print("  backtest [--start YYYY-MM-DD] [--end YYYY-MM-DD]  백테스트 실행")
+        print("  backtest [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--view] 백테스트 실행")
         print("  signal [--date YYYY-MM-DD]                        일일 신호 생성")
         print()
         print("Examples:")
-        print("  quant backtest --start 2025-11-01 --end 2026-01-05")
+        print("  quant backtest --start 2025-11-01 --end 2026-01-05 --view")
         print("  quant signal --date 2026-01-06")
         print("  quant signal")
         return
@@ -61,6 +65,7 @@ def main():
         start = start_dt.strftime("%Y-%m-%d")
         end = end_dt.strftime("%Y-%m-%d")
         train_start = None
+        view = False
         
         for i, arg in enumerate(sys.argv[2:]):
             if arg == "--start" and i + 3 < len(sys.argv):
@@ -69,8 +74,10 @@ def main():
                 end = sys.argv[i + 3]
             elif arg == "--train-start" and i + 3 < len(sys.argv):
                 train_start = sys.argv[i + 3]
+            elif arg == "--view":
+                view = True
         
-        backtest_command(start, end, train_start)
+        backtest_command(start, end, train_start, view)
     
     elif command == "signal":
         date = None
