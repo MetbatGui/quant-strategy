@@ -48,7 +48,9 @@ class BacktestEngine:
         
         for ticker, name in self.strategy.ETF_POOL.items():
             try:
-                df_raw = yf.download(ticker, start=adjusted_start, end=end_date, progress=False)
+                # yfinance download end date is exclusive, so add 1 day to include end_date
+                download_end = (pd.to_datetime(end_date) + timedelta(days=1)).strftime('%Y-%m-%d')
+                df_raw = yf.download(ticker, start=adjusted_start, end=download_end, progress=False)
                 
                 # MultiIndex 제거
                 if isinstance(df_raw.columns, pd.MultiIndex):
@@ -131,7 +133,13 @@ class BacktestEngine:
         # 3. 거래일 생성 (첫 번째 ETF 기준)
         first_ticker = list(etf_data.keys())[0]
         all_dates = etf_data[first_ticker].index
-        backtest_dates = all_dates[all_dates >= pd.to_datetime(start_date)]
+        if trade_on_last_day:
+            backtest_dates = all_dates[(all_dates >= pd.to_datetime(start_date)) & (all_dates <= pd.to_datetime(end_date))]
+        else:
+            # If not trading on last day, we still need to include end_date to allow morning exit
+            # But entry logic will be skipped inside the loop
+            backtest_dates = all_dates[(all_dates >= pd.to_datetime(start_date)) & (all_dates <= pd.to_datetime(end_date))]
+
         
         print(f"\n📅 백테스트 기간: {len(backtest_dates)} 거래일")
         print("\n" + "="*80)

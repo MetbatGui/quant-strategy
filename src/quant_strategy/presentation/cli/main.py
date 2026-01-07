@@ -11,11 +11,9 @@ def backtest_command(start: str = "2024-01-01", end: str = "2025-01-01", train_s
     strategy = EtfQualityStrategy()
     engine = BacktestEngine(strategy, initial_capital=10_000_000)
     
-    # If end date is 2026-01-05, disable last day trading (User Request)
-    trade_on_last_day = True
-    if end == "2026-01-05":
-        trade_on_last_day = False
-        
+    # Always disable entry on the last day (User Preference)
+    trade_on_last_day = False
+
     result = engine.run(start, end, train_start, trade_on_last_day=trade_on_last_day)
     
     # Save Report
@@ -69,7 +67,7 @@ def main():
         # start_dt = end_dt - timedelta(days=60)
         
         start = "2025-11-01"
-        end = "2026-01-05"
+        end = "2026-01-02"
         train_start = None
         view = False
         
