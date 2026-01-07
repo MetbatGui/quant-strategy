@@ -180,6 +180,23 @@ class EtfQualityStrategy:
                 else:
                     details['RSI'] = "0점 (데이터 부족)"
             
+            # 6. Warning Alerts (점수 영향 없음, 리포트용)
+            warnings = []
+            if date in rsi.index and pd.notna(rsi.loc[date]):
+                 curr_rsi = rsi.loc[date]
+                 if curr_rsi > 70:
+                     warnings.append(f"RSI 과열 ({curr_rsi:.1f})")
+            
+            if date in df.index and date in ma5.index:
+                curr_open = df.loc[date, 'Open']
+                if idx > 0:
+                    prev_close = df.iloc[idx-1]['Close']
+                    if curr_rsi > 65 and curr_open < prev_close:
+                        warnings.append("고점권 갭하락")
+
+            if warnings:
+                details['⚠️ 주의'] = ", ".join(warnings)
+
             return score, details
             
         except Exception as e:
