@@ -12,6 +12,10 @@ def backtest_command(start: str = "2024-01-01", end: str = "2025-01-01", train_s
     
     result = engine.run(start, end, train_start)
     
+    # Save Report
+    if result and hasattr(result, 'save'):
+        result.save()
+        
     return result
 
 
@@ -48,16 +52,25 @@ def main():
     command = sys.argv[1]
     
     if command == "backtest":
-        start = "2024-01-01"
-        end = "2025-01-01"
+        from datetime import datetime, timedelta
+        
+        # Default: Last 2 months
+        end_dt = datetime.now()
+        start_dt = end_dt - timedelta(days=60)
+        
+        start = start_dt.strftime("%Y-%m-%d")
+        end = end_dt.strftime("%Y-%m-%d")
+        train_start = None
         
         for i, arg in enumerate(sys.argv[2:]):
             if arg == "--start" and i + 3 < len(sys.argv):
                 start = sys.argv[i + 3]
             elif arg == "--end" and i + 3 < len(sys.argv):
                 end = sys.argv[i + 3]
+            elif arg == "--train-start" and i + 3 < len(sys.argv):
+                train_start = sys.argv[i + 3]
         
-        backtest_command(start, end)
+        backtest_command(start, end, train_start)
     
     elif command == "signal":
         date = None
