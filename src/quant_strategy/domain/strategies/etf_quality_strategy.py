@@ -117,10 +117,16 @@ class EtfQualityStrategy:
                 if pd.notna(m5) and pd.notna(m20):
                     if price > m5 > m20:
                         score += 20
-                        details['추세'] = "20점 (강세)"
+                        details['추세'] = "20점 (강세 정배열)"
                     elif price > m5:
+                        score += 15
+                        details['추세'] = "15점 (단기 반등)"
+                    elif price > m20:
                         score += 10
-                        details['추세'] = "10점 (약세상승)"
+                        details['추세'] = "10점 (눌림목)"
+                    elif m5 > m20:
+                        score += 5
+                        details['추세'] = "5점 (골든크로스 이탈)"
                     else:
                         details['추세'] = "0점 (약세)"
                 else:
@@ -131,13 +137,16 @@ class EtfQualityStrategy:
                 idx = df.index.get_loc(date)
                 if idx >= 5:
                     momentum_5d = (df['Close'].iloc[idx] / df['Close'].iloc[idx-5] - 1) * 100
-                    if momentum_5d > 3:
+                    if momentum_5d > 3.0:
                         score += 20
                         details['모멘텀'] = f"20점 (5일 {momentum_5d:.2f}%)"
-                    elif momentum_5d > 1:
+                    elif momentum_5d > 2.0:
+                        score += 15
+                        details['모멘텀'] = f"15점 (5일 {momentum_5d:.2f}%)"
+                    elif momentum_5d > 1.0:
                         score += 10
                         details['모멘텀'] = f"10점 (5일 {momentum_5d:.2f}%)"
-                    elif momentum_5d > 0:
+                    elif momentum_5d > 0.0:
                         score += 5
                         details['모멘텀'] = f"5점 (5일 {momentum_5d:.2f}%)"
                     else:
@@ -169,12 +178,15 @@ class EtfQualityStrategy:
             if date in rsi.index:
                 r = rsi.loc[date]
                 if pd.notna(r):
-                    if 40 < r < 70:
+                    if 45 <= r <= 65:
                         score += 15
                         details['RSI'] = f"15점 (RSI {r:.1f})"
-                    elif 30 < r < 80:
+                    elif 40 <= r <= 70:
                         score += 10
                         details['RSI'] = f"10점 (RSI {r:.1f})"
+                    elif 30 <= r <= 80:
+                        score += 5
+                        details['RSI'] = f"5점 (RSI {r:.1f})"
                     else:
                         details['RSI'] = f"0점 (RSI {r:.1f})"
                 else:
