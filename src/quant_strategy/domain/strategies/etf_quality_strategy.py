@@ -348,7 +348,8 @@ class EtfQualityStrategy:
         """
         for ticker, df in etf_data.items():
             try:
-                model, features, metrics = train_xgboost_model(df, test_size=0.3)
+                # Pass self.k to align training with strategy entry logic
+                model, features, metrics = train_xgboost_model(df, test_size=0.3, entry_k=self.k)
                 self.models[ticker] = model
                 self.features[ticker] = features
             except Exception as e:

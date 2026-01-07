@@ -65,43 +65,54 @@ def create_features(df: pd.DataFrame, lookback: int = 5) -> pd.DataFrame:
     return features.dropna()
 
 
-def create_target(df: pd.DataFrame, entry_k: float = 0.03) -> pd.Series:
+def create_target(df: pd.DataFrame, entry_k: float = 0.5) -> pd.Series:
     """
     타겟 변수 생성: 다음 거래의 수익률
     
     Args:
         df: OHLCV 데이터
-        entry_k: 진입 기준 k 값 (0.03 = 3%)
+        entry_k: 진입 기준 k 값
     
     Returns:
         수익률 시리즈
     """
+    # 1. 진입가 계산 (변동성 돌파)
+    # Target(T) = Open(T) + Range(T-1) * k
     lev_rng = (df['High'] - df['Low']).shift(1)
     target_price = df['Open'] + (lev_rng * entry_k)
     
-    # 다음날 종가 (간단화, 실제는 갭 조건 등 복잡)
-    next_close = df['Close'].shift(-1)
+    # 2. 청산가 계산 (익일 시가)
+    # Exit(T+1) = Open(T+1)
+    # shift(-1) of Open gives Open(T+1)
+    exit_price = df['Open'].shift(-1)
     
-    # 체결되었다고 가정하고 수익률 계산 (수수료 0.05%)
-    returns = (next_close / target_price - 1 - 0.0005) * 100
+    # 3. 수익률 계산
+    # Return = (Exit / Entry - 1)
+    returns = (exit_price / target_price - 1 - 0.0005) * 100
     
     return returns
 
 
-def train_xgboost_model(df: pd.DataFrame, test_size: float = 0.2):
+def train_xgboost_model(df: pd.DataFrame, test_size: float = 0.2, entry_k: float = 0.5):
     """
     XGBoost 모델 학습
     
     Args:
         df: OHLCV 데이터
         test_size: 테스트 비율
+        entry_k: 진입 k 값
     
     Returns:
         (model, feature_names, metrics)
     """
     # 특징 및 타겟 생성
     X = create_features(df)
-    y = create_target(df)
+    
+    # Target Shift:
+    # X(T)는 T일 종가 기준 특징.
+    # 우리는 X(T)를 보고 T+1일의 거래(T+1 진입 -> T+2 청산)를 예측하고 싶음.
+    # 따라서 y를 -1 shift하여 X(T)와 매핑해야 함.
+    y = create_target(df, entry_k=entry_k).shift(-1)
     
     # 공통 인덱스
     common_idx = X.index.intersection(y.index)
