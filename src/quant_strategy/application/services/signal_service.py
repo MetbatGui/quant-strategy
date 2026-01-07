@@ -76,13 +76,23 @@ class SignalService:
             print("❌ 데이터가 없습니다.")
             return {}
         
-        # 2. 모델 학습
-        self.strategy.train_models(etf_data)
+        # 2. 모델 학습 (Strict: 예측일 데이터 제외)
+        train_data = {}
+        for ticker, df in etf_data.items():
+            train_df = df[df.index < target_dt].copy()
+            if not train_df.empty:
+                train_data[ticker] = train_df
+                
+        if not train_data:
+             print("❌ 학습 데이터 부족.")
+             return {}
+             
+        self.strategy.train_models(train_data)
         
         # 3. 최신 거래일 찾기
         first_ticker = list(etf_data.keys())[0]
         all_dates = etf_data[first_ticker].index
-        available_dates = all_dates[all_dates <= target_dt]
+        available_dates = all_dates[all_dates < target_dt]
         
         if len(available_dates) == 0:
             print(f"❌ {target_date} 이전에 거래일이 없습니다.")
