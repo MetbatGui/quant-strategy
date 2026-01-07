@@ -10,6 +10,7 @@ dependencies = [
     "matplotlib>=3.10.8",
     "numpy>=2.4.0",
     "pandas>=2.3.3",
+    "plotly>=6.5.0",
     "pykrx>=1.0.51",
     "schedule>=1.2.2",
     "scikit-learn>=1.8.0",
